@@ -1,38 +1,53 @@
-# Milestone: Deterministic Sensor Dataset Fixture and FP32 Baseline
+# Milestone: Exact INT8 Post-Training Quantization and Integer Reference Inference
 
 ## Objective
 
-Build SparrowML’s first real ML milestone:
+Extend SparrowML’s deterministic FP32 baseline into a reproducible INT8 post-training quantization pipeline with exact integer reference inference.
 
-1. define a deterministic sensor-classification dataset fixture;
-2. implement a reproducible preprocessing pipeline;
-3. train a small FP32 PyTorch baseline;
-4. evaluate it on fixed train, validation, and test splits;
-5. save reproducible metrics and a model checkpoint;
-6. establish the data and experiment contracts that later quantization, pruning, compilation, and Sparrow-V deployment milestones will consume.
+This milestone must:
 
-This milestone is only the FP32 software baseline.
+1. load the trained FP32 `Linear(16, 4)` checkpoint;
+2. calibrate activation ranges using training data only;
+3. quantize model inputs and weights to signed INT8;
+4. quantize biases into the INT32 accumulator domain;
+5. execute integer-only affine inference;
+6. dequantize logits for comparison with FP32;
+7. report quantization error, saturation, accuracy, and prediction agreement;
+8. emit stable quantized-model artifacts for the later 2:4 pruning and Sparrow-V export milestones.
 
-Do not implement quantization, 2:4 pruning, compiler lowering, Sparrow-V execution, TinyNPU integration, or hardware-aware optimization yet.
+This milestone is about quantization correctness and integer semantics.
 
-## Project context
+Do not implement structured pruning, sparse packing, compiler lowering, Sparrow-V execution, TinyNPU integration, or quantization-aware training.
 
-SparrowML is a separate repository from Sparrow-V.
+## Baseline
 
-SparrowML owns:
+Phase 1 currently provides:
 
-- dataset processing;
-- model training;
-- quantization and pruning in future milestones;
-- compiler and exporter tooling;
-- runtime orchestration;
-- evaluation and experiment management.
+- a deterministic synthetic vibration-fault-style fixture;
+- 512 samples;
+- 16 finite features per sample;
+- four classes:
+  - `normal`
+  - `inner`
+  - `outer`
+  - `ball`
+- seed `20260623`;
+- balanced deterministic splits:
+  - 360 train;
+  - 76 validation;
+  - 76 test;
+- train-only standardization;
+- preprocessing version `standardize_train_v1`;
+- a CPU FP32 `Linear(16, 4)` model;
+- 68 trainable parameters;
+- deterministic training and checkpoint selection;
+- FP32 fixture accuracy of 100% on train, validation, and test;
+- generated Phase 1 artifacts under `artifacts/phase1_fp32/`;
+- passing Phase 1 and repository checks.
 
-Sparrow-V remains an external deployment target.
+The 100% result is synthetic fixture accuracy only and is not a real-world model-quality claim.
 
-This milestone must not modify Sparrow-V.
-
-## Relevant files
+## Relevant Context
 
 Read first:
 
@@ -40,379 +55,338 @@ Read first:
 - `docs/codex_context.md`
 - `docs/current_milestone.md`
 - `docs/architecture.md`
-- `docs/build_roadmap.md`
 - `docs/data_contracts.md`
 - `docs/experiment_policy.md`
-- `configs/project.yaml`
-- existing package and test structure.
+- `docs/results/phase1_fp32_baseline.md`
+- `configs/experiments/fp32_sensor_baseline.yaml`
+- Phase 1 fixture, preprocessing, model, training, evaluation, and artifact modules.
 
 Inspect only directly relevant files after that.
 
 Do not perform a broad repository audit unless a concrete failure requires it.
 
-## Scope
+## Quantization Contract
 
-Implement a deterministic four-class sensor-classification baseline suitable for later Sparrow-V deployment.
+Implement explicit affine quantization semantics.
 
-Use:
-
-- 16 input features;
-- 4 output classes;
-- one linear classifier initially;
-- FP32 training and inference;
-- deterministic train, validation, and test splits;
-- fixed random seeds;
-- CPU execution only;
-- offline tests;
-- no internet dependency during tests.
-
-Preferred model:
+For a real-valued tensor `x`:
 
 ```text
-Linear(16, 4)
+q = clamp(round(x / scale) + zero_point, qmin, qmax)
 ```
 
-The model should output four logits.
-
-Prediction is:
+For dequantization:
 
 ```text
-argmax(logits)
+x_hat = scale × (q - zero_point)
 ```
 
-## Dataset strategy
-
-Use a small deterministic fixture suitable for repository tests and development.
-
-The fixture may be:
-
-- synthetically generated from documented class prototypes and controlled noise;
-- derived from a small permissively licensed dataset already available locally;
-- another deterministic fixture with clear provenance.
-
-For this milestone, prefer a synthetic but meaningful sensor fixture if no real dataset is already present.
-
-Do not claim real-world model accuracy from synthetic data.
-
-Label all reported performance as:
+Use signed INT8 ranges:
 
 ```text
-fixture accuracy
+qmin = -128
+qmax = 127
 ```
 
-unless real dataset provenance and splits are genuinely implemented.
+Document exactly:
 
-## Classes
+- rounding behavior;
+- clamping behavior;
+- scale derivation;
+- zero-point derivation;
+- accumulator width;
+- bias quantization;
+- requantization or dequantization behavior.
 
-Use four classes aligned with the Sparrow-V sensor demonstration where practical:
+Do not rely on opaque framework quantization kernels as the only implementation.
+
+The milestone must have an inspectable integer reference path.
+
+## Quantization Scheme
+
+Use a simple, Sparrow-V-compatible scheme.
+
+### Input activations
+
+Use signed INT8 affine or symmetric quantization.
+
+Preferred initial scheme:
 
 ```text
-normal
-inner
-outer
-ball
+per-tensor symmetric INT8
+zero_point = 0
 ```
 
-Document that these names are placeholders for a vibration-fault-style classification task unless backed by a real dataset.
+Calibration must use only the training split.
 
-## Fixture requirements
-
-Create a deterministic dataset with:
-
-- exactly 16 numerical features per sample;
-- four classes;
-- train split;
-- validation split;
-- test split;
-- fixed class ordering;
-- fixed seed;
-- class balance or clearly reported imbalance;
-- stable sample IDs.
-
-Recommended bounded size:
-
-- 256 to 1,024 total samples;
-- enough samples for training and evaluation;
-- small enough for fast CPU-only tests.
-
-A suitable default is:
+The activation scale should be based on a documented range policy, such as:
 
 ```text
-512 total samples
-128 samples per class
+max_abs / 127
 ```
 
-Suggested split:
+If a percentile or clipping policy is used, it must be configurable and documented.
+
+### Weights
+
+Use signed INT8 symmetric quantization.
+
+Preferred scheme:
 
 ```text
-70% train
-15% validation
-15% test
+per-output-channel symmetric INT8
 ```
 
-Exact counts may be adjusted to keep class balance exact.
+For `Linear(16, 4)`, each output row receives its own weight scale.
 
-## Fixture generation
+This is preferred because it is simple, accurate, and compatible with later hardware export.
 
-Implement one deterministic fixture generator.
+If per-tensor weight quantization is chosen instead, justify it and record the accuracy trade-off.
 
-It should:
+### Biases
 
-- define one class prototype per class;
-- generate controlled variation around each prototype;
-- produce reproducible features;
-- avoid perfectly trivial one-hot separation;
-- keep features finite;
-- avoid NaN and infinity;
-- write metadata describing seed, dimensions, class order, and split sizes.
-
-Use a fixed default seed.
-
-Recommended:
+Quantize each FP32 bias into signed INT32 using:
 
 ```text
-seed = 20260623
+bias_scale[channel] = input_scale × weight_scale[channel]
 ```
 
-The generator must produce identical outputs across repeated runs in the same supported environment.
-
-## Data representation
-
-Define a stable internal example structure containing:
-
-- sample ID;
-- feature vector;
-- integer class ID;
-- class name;
-- split.
-
-Preferred persisted format:
+Then:
 
 ```text
-JSON Lines
+bias_int32[channel] = round(bias_fp32[channel] / bias_scale[channel])
 ```
 
-or:
+Validate against signed INT32 bounds.
+
+### Accumulation
+
+Compute exact integer logits as:
 
 ```text
-CSV plus metadata JSON
+acc[channel] =
+    bias_int32[channel]
+    + Σ input_int8[i] × weight_int8[channel, i]
 ```
 
-Choose the simpler format that integrates cleanly with the package.
+Use signed INT32 or wider host-side arithmetic for safety, while validating that deployed accumulator values fit signed INT32.
 
-Document:
+The integer accumulator must not use FP32 multiplication internally.
 
-- feature ordering;
-- class ordering;
-- split policy;
-- normalization policy;
-- fixture provenance;
-- deterministic seed.
+### Output reconstruction
 
-## Data locations
-
-Use the existing data policy.
-
-Recommended layout:
+For each output channel:
 
 ```text
-data/processed/sensor_fixture/
+logit_fp32_approx[channel] =
+    acc[channel] × input_scale × weight_scale[channel]
 ```
 
-Generated large or transient artifacts should remain ignored.
-
-Small deterministic golden fixtures may be tracked only if:
-
-- they are documented;
-- they are reproducible;
-- their size is reasonable;
-- repository policy permits it.
-
-Prefer generating fixtures during tests or through a command if that keeps the repository cleaner.
-
-## Preprocessing
-
-Implement a simple deterministic preprocessing pipeline.
-
-At minimum:
-
-- validate feature count;
-- validate finite values;
-- fit normalization statistics on training data only;
-- apply the same statistics to validation and test data;
-- prevent train/test leakage;
-- preserve feature ordering.
-
-Preferred normalization:
+Predicted class is:
 
 ```text
-standardization using train-split mean and standard deviation
+argmax(acc)
 ```
 
-Handle zero-variance features safely.
+only if per-channel scale differences do not invalidate direct accumulator comparison.
 
-Persist or report:
+Because per-channel weight scales may differ, the canonical predicted class must be computed from reconstructed real-valued logits unless a mathematically equivalent common-scale transform is implemented and documented.
 
-- feature means;
-- feature standard deviations;
-- class order;
-- preprocessing version.
+Do not incorrectly apply `argmax` directly across differently scaled accumulators.
 
-## Model
+## Calibration
 
-Implement a minimal PyTorch model:
+Implement deterministic calibration using training data only.
 
-```python
-torch.nn.Linear(16, 4)
-```
+Calibration must report:
 
-Requirements:
+- minimum input value;
+- maximum input value;
+- maximum absolute value;
+- selected activation scale;
+- zero point;
+- number and percentage of clipped values;
+- calibration sample count;
+- calibration split.
 
-- deterministic initialization;
-- explicit input and output dimensions;
-- no hidden layers;
-- no activation after final logits;
-- CPU support;
-- simple inspectable implementation.
+Validation and test data must not influence calibration.
 
-Do not add a larger MLP in this milestone.
+Persist calibration metadata.
 
-## Training
+## Exact Integer Reference
 
-Implement one deterministic training command.
+Create a standalone integer inference implementation that accepts:
 
-Use:
+- quantized INT8 input vector;
+- quantized INT8 weight matrix;
+- INT32 bias vector;
+- activation scale;
+- per-channel weight scales;
+- class metadata.
 
-- cross-entropy loss;
-- a simple optimizer such as Adam or SGD;
-- bounded epoch count;
-- validation loss and accuracy;
-- best-checkpoint selection using validation performance only;
-- fixed seeds for Python, NumPy, and PyTorch;
-- CPU-only default.
+It must output:
 
-Recommended initial defaults:
+- INT32 accumulators;
+- reconstructed FP32 logits;
+- predicted class;
+- saturation or overflow diagnostics.
 
-```text
-epochs: 50
-batch size: 32
-learning rate: 1e-2
-```
+The implementation must not call `torch.nn.Linear` for the integer computation.
 
-Adjust only if needed for stable convergence.
+PyTorch or NumPy may be used for tensor storage, but the arithmetic semantics must remain explicit and testable.
 
-Do not tune on the test split.
+## FP32 Comparison
 
-## Determinism
+For every train, validation, and test sample, compare:
 
-Set and record:
-
-- Python seed;
-- NumPy seed;
-- PyTorch seed;
-- dataset-generation seed;
-- split seed;
-- DataLoader shuffle seed.
-
-Where exact bitwise reproducibility is not guaranteed across PyTorch versions, document the limitation.
-
-Within the tested environment, repeated runs should produce:
-
-- identical split membership;
-- identical fixture files;
-- identical class counts;
-- identical or tightly stable metrics.
-
-## Evaluation
-
-Evaluate on:
-
-- train;
-- validation;
-- test.
+- FP32 logits;
+- dequantized INT8 logits;
+- FP32 predicted class;
+- INT8 predicted class;
+- expected label.
 
 Report:
 
-- loss;
-- accuracy;
-- per-class sample count;
-- per-class correct count;
-- confusion matrix;
-- predicted class distribution.
+- split-level FP32 fixture accuracy;
+- split-level INT8 fixture accuracy;
+- FP32/INT8 prediction agreement;
+- number of prediction disagreements;
+- maximum absolute logit error;
+- mean absolute logit error;
+- root mean square logit error;
+- per-output-channel error statistics.
 
-Also report:
+Keep metrics small and directly relevant.
 
-- model parameter count;
-- checkpoint size;
+## Saturation and Overflow Reporting
+
+Report:
+
+### Input quantization
+
+- total values quantized;
+- values clipped to `-128`;
+- values clipped to `127`;
+- total clipped values;
+- clipping percentage.
+
+### Weight quantization
+
+- total values quantized;
+- values at `-128`;
+- values at `127`;
+- per-channel scale;
+- zero-scale handling.
+
+### Bias and accumulator
+
+- minimum and maximum quantized bias;
+- minimum and maximum observed accumulator;
+- whether all observed accumulators fit signed INT32;
+- theoretical conservative accumulator bound;
+- whether the theoretical bound fits signed INT32.
+
+Fail clearly if any bias or accumulator exceeds the supported range.
+
+## Quantization Error Gates
+
+Use bounded acceptance gates.
+
+Required:
+
+- INT8 test fixture accuracy must be at least 95%;
+- INT8 test fixture accuracy must not drop by more than 2 percentage points from FP32;
+- FP32/INT8 test prediction agreement must be at least 98%;
+- all observed accumulators must fit signed INT32;
+- no NaN or infinity in reconstructed logits;
+- quantization artifacts must be deterministic.
+
+Because the fixture is simple, 100% INT8 fixture accuracy may occur. Report it honestly without presenting it as real-world performance.
+
+Do not change the test set to satisfy the gate.
+
+## Quantized Artifact Format
+
+Define a stable machine-readable quantized model artifact.
+
+Preferred format:
+
+```text
+JSON manifest + binary or JSON tensor payloads
+```
+
+For this small model, a single JSON file is acceptable if it remains readable and deterministic.
+
+The artifact must include:
+
+- format version;
+- model name;
+- source FP32 checkpoint identity;
 - feature count;
 - class count;
-- split sizes;
-- training seed;
-- best epoch.
+- class names;
+- quantization scheme;
+- input scale;
+- input zero point;
+- weight scales;
+- weight zero points;
+- INT8 weight matrix;
+- INT32 bias vector;
+- tensor shapes;
+- lane/order conventions;
+- preprocessing version;
+- calibration split and sample count;
+- accumulator type;
+- creation configuration;
+- optional content hashes.
 
-Do not add AUROC, F1, or calibration metrics unless justified by the fixture and implemented cleanly.
+Use repository-relative paths.
 
-## Expected quality gate
+Do not include machine-specific absolute paths.
 
-The fixture and model should be learnable but not fabricated as a perfect real-world benchmark.
+## Generated Artifacts
 
-Set a minimum test fixture accuracy gate of:
+Use an output directory such as:
 
 ```text
->= 85%
+artifacts/phase2_int8/
 ```
 
-If the fixture naturally produces 100%, report it honestly as fixture accuracy and explain that the fixture is deterministic and synthetic.
-
-Do not alter the test set after observing results.
-
-## Artifact outputs
-
-Create a reproducible experiment output directory, for example:
-
-```text
-artifacts/phase1_fp32/
-```
-
-Generated artifacts may remain ignored.
+Generated artifacts should remain ignored unless repository policy explicitly tracks a small golden fixture.
 
 At minimum generate:
 
 - configuration snapshot;
-- dataset metadata;
-- preprocessing statistics;
-- best FP32 checkpoint;
-- metrics JSON;
-- confusion matrix JSON or CSV;
+- calibration report;
+- quantized model artifact;
+- integer-evaluation metrics JSON;
+- error-statistics JSON;
+- confusion matrix;
+- prediction-agreement report;
 - human-readable Markdown summary.
 
-The summary must distinguish:
-
-- measured values;
-- fixture-only claims;
-- future deployment work not yet implemented.
+Do not overwrite Phase 1 artifacts.
 
 ## Configuration
 
-Add a dedicated Phase 1 configuration, preferably:
+Add a dedicated Phase 2 configuration, preferably:
 
 ```text
-configs/experiments/fp32_sensor_baseline.yaml
+configs/experiments/int8_ptq_baseline.yaml
 ```
 
 Include:
 
-- seed;
-- dataset size;
-- feature count;
-- class names;
-- split ratios;
-- normalization settings;
-- optimizer;
-- learning rate;
-- epoch count;
-- batch size;
-- output directory.
+- source Phase 1 checkpoint path;
+- source preprocessing metadata path;
+- input quantization scheme;
+- weight quantization scheme;
+- calibration policy;
+- clipping policy;
+- accumulator type;
+- acceptance thresholds;
+- output directory;
+- deterministic seed.
 
 Avoid machine-specific absolute paths.
 
@@ -421,60 +395,42 @@ Avoid machine-specific absolute paths.
 Extend the CLI with bounded commands such as:
 
 ```text
-sparrowml generate-fixture
-sparrowml train-fp32
-sparrowml evaluate-fp32
-sparrowml run-fp32-baseline
+sparrowml calibrate-int8
+sparrowml quantize-int8
+sparrowml evaluate-int8
+sparrowml run-int8-baseline
 ```
 
-Exact command names may be adjusted.
+Exact names may be adjusted to match existing conventions.
 
 Preferred behavior:
 
-### `generate-fixture`
+### `calibrate-int8`
 
-- generate or validate deterministic dataset fixture;
-- print split sizes and class counts.
+- load Phase 1 fixture and preprocessing;
+- use training split only;
+- emit activation calibration metadata.
 
-### `train-fp32`
+### `quantize-int8`
 
-- train the linear classifier;
-- save the best checkpoint;
-- save metrics.
+- load the best FP32 checkpoint;
+- quantize weights and biases;
+- emit the quantized-model artifact;
+- validate tensor ranges.
 
-### `evaluate-fp32`
+### `evaluate-int8`
 
-- load checkpoint;
-- evaluate train, validation, and test splits;
-- write summary.
+- run exact integer reference inference;
+- compare with FP32;
+- emit metrics and summaries.
 
-### `run-fp32-baseline`
+### `run-int8-baseline`
 
-- perform fixture generation, training, evaluation, and reporting in one reproducible command.
+- perform calibration, quantization, evaluation, and reporting in one reproducible command.
 
 Use proper exit codes.
 
-## Python dependencies
-
-Add only the dependencies required for this milestone.
-
-Expected additions:
-
-- PyTorch;
-- NumPy;
-- PyYAML if not already present.
-
-Avoid:
-
-- pandas unless clearly useful;
-- scikit-learn unless needed for a small metric utility;
-- notebook-only dependencies;
-- plotting libraries unless a plot is actually required;
-- large ML frameworks beyond PyTorch.
-
-Prefer lightweight, direct implementations.
-
-## Package structure
+## Package Structure
 
 Add only the necessary modules.
 
@@ -482,250 +438,225 @@ A reasonable structure is:
 
 ```text
 src/sparrowml/
-├── data/
-│   ├── fixture.py
-│   ├── dataset.py
-│   └── preprocessing.py
-├── models/
-│   └── linear_classifier.py
-├── training/
-│   ├── trainer.py
-│   └── seeds.py
+├── quantization/
+│   ├── __init__.py
+│   ├── affine.py
+│   ├── calibration.py
+│   ├── weights.py
+│   ├── bias.py
+│   ├── integer_reference.py
+│   └── artifacts.py
 └── evaluation/
-    ├── metrics.py
-    └── report.py
+    └── quantization_metrics.py
 ```
 
-Adjust to match the existing scaffold.
+Adjust to fit the existing package.
 
-Do not add a generalized training framework.
+Do not add a generalized graph quantization framework.
 
 ## Tests
 
 Add focused tests for:
 
-### Fixture generation
+### Quantization primitives
 
-- deterministic output;
-- correct sample count;
-- exactly 16 features;
-- four classes;
-- stable class order;
-- balanced class counts where intended;
-- no duplicate sample IDs;
-- no NaN or infinity;
-- identical repeated generation.
+- scale calculation;
+- zero-point calculation;
+- symmetric INT8 behavior;
+- rounding policy;
+- clamping;
+- `-128` and `127`;
+- zero-valued tensor handling;
+- deterministic output.
 
-### Splits
+### Per-channel weights
 
-- no overlap among train, validation, and test;
-- all samples assigned exactly once;
-- deterministic split membership;
-- class counts reported.
+- correct output-channel axis;
+- one scale per output;
+- correct INT8 shape;
+- reconstruction error;
+- zero-row handling;
+- range validation.
 
-### Preprocessing
+### Bias quantization
 
-- statistics fit on training data only;
-- validation and test use training statistics;
-- zero-variance handling;
-- output shape;
-- finite outputs;
-- reproducibility.
+- correct combined scale;
+- correct INT32 values;
+- overflow rejection;
+- zero-scale rejection.
 
-### Model
+### Integer inference
 
-- input shape `(batch, 16)`;
-- output shape `(batch, 4)`;
-- deterministic initialization;
-- parameter count.
+- hand-computed small example;
+- signed multiplication;
+- negative values;
+- INT32 accumulation;
+- reconstructed logits;
+- per-channel output scales;
+- correct prediction semantics.
 
-### Training
+### Calibration
 
-- one short smoke-training run;
-- loss decreases on a small fixture;
-- checkpoint is created;
-- metrics file is valid;
-- no GPU required.
+- training split only;
+- stable sample count;
+- deterministic scale;
+- no validation/test leakage;
+- clipping statistics.
+
+### Artifact schemas
+
+- required fields;
+- tensor dimensions;
+- integer ranges;
+- scale positivity;
+- class consistency;
+- relative paths;
+- unsupported format version.
 
 ### Evaluation
 
-- confusion matrix shape is 4 × 4;
-- accuracy calculation is correct;
-- per-class counts sum correctly;
-- repeated checkpoint evaluation is stable.
+- confusion matrix shape;
+- agreement calculation;
+- error metrics;
+- saturation counts;
+- accumulator range checks.
 
 ### CLI
 
 - commands parse;
-- smoke run succeeds;
-- invalid configuration fails clearly.
+- smoke quantization run succeeds;
+- missing Phase 1 checkpoint fails clearly;
+- invalid config fails clearly.
 
 Tests must not:
 
 - require internet;
-- download a dataset;
-- require Sparrow-V;
 - require a GPU;
-- take excessive time.
+- require Sparrow-V;
+- modify Sparrow-V;
+- retrain the full FP32 model repeatedly.
 
-Keep normal test runtime bounded.
+Use the existing Phase 1 checkpoint if present, or create minimal temporary models in focused tests.
 
-## Make targets
+## Make Targets
 
 Add stable targets such as:
 
 ```text
-generate-fixture
-train-fp32
-evaluate-fp32
-run-fp32-baseline
-test-phase1
+calibrate-int8
+quantize-int8
+evaluate-int8
+run-int8-baseline
+test-phase2
 ```
 
-Update:
+Update `make help`.
+
+Recommended:
 
 ```text
-make help
+make test-phase2
 ```
 
-Recommended behavior:
+runs focused Phase 2 tests only.
 
-```text
-make test-phase1
-```
+Do not include the full FP32 retraining run inside every Phase 2 test.
 
-runs only Phase 1 focused tests.
-
-Do not include full training in every general repository check if it materially slows iteration.
-
-A tiny smoke-training run may remain in `make check`.
+The aggregate baseline may depend on existing Phase 1 artifacts and fail clearly with instructions if they are missing.
 
 ## Documentation
 
 Update or add:
 
-- `README.md`
-- `docs/architecture.md`
-- `docs/build_roadmap.md`
-- `docs/data_contracts.md`
-- `docs/experiment_policy.md`
-- `docs/codex_context.md`
-- one Phase 1 results document.
+- `README.md`;
+- `docs/architecture.md`;
+- `docs/build_roadmap.md`;
+- `docs/data_contracts.md`;
+- `docs/experiment_policy.md`;
+- `docs/codex_context.md`;
+- one Phase 2 results document.
 
-Suggested new document:
+Suggested:
 
 ```text
-docs/results/phase1_fp32_baseline.md
+docs/results/phase2_int8_ptq.md
 ```
 
 Document:
 
-- fixture design;
-- class names;
-- split sizes;
-- seed;
-- feature representation;
-- preprocessing;
-- model architecture;
-- training configuration;
-- measured metrics;
-- confusion matrix;
+- quantization equations;
+- rounding and clipping semantics;
+- calibration policy;
+- input scale and zero point;
+- per-channel weight scales;
+- bias quantization;
+- exact integer accumulation;
+- prediction semantics with per-channel scales;
+- fixture accuracy;
+- prediction agreement;
+- error metrics;
+- saturation;
+- accumulator range;
+- artifact format;
 - limitations;
-- exact reproduction commands.
+- reproduction commands.
 
 Keep `docs/codex_context.md` concise.
 
-## README status
+## README Status
 
-Update the README from:
-
-```text
-scaffold only
-```
-
-to:
+Update README status to:
 
 ```text
-Phase 1 FP32 baseline implemented
+Phase 2 INT8 post-training quantization implemented
 ```
 
 Do not claim:
 
-- quantization;
-- pruning;
-- compiler support;
+- structured sparsity;
+- compiler lowering;
 - Sparrow-V deployment;
-- hardware metrics;
-- real-world accuracy.
+- hardware acceleration;
+- real-world accuracy;
+- quantization-aware training.
 
-## Result file
+## Existing Behavior Preservation
 
-Update:
+Preserve:
 
-```text
-docs/codex_milestone_result.md
-```
+- Phase 1 fixture generation;
+- Phase 1 FP32 training;
+- Phase 1 evaluation;
+- all existing CLI commands;
+- all existing tests;
+- repository contracts;
+- Sparrow-V target boundary.
 
-throughout the run.
+Do not modify Sparrow-V.
 
-Finalize with:
-
-```text
-STATUS: COMPLETE
-```
-
-only if every required criterion and validation passes.
-
-Include:
-
-- fixture size;
-- split sizes;
-- class names;
-- seed;
-- model architecture;
-- parameter count;
-- best epoch;
-- train, validation, and test metrics;
-- confusion matrix;
-- generated artifacts;
-- exact commands and outcomes;
-- changed files;
-- remaining limitations;
-- next recommended milestone;
-- confirmation that Sparrow-V was not modified;
-- confirmation that no commit or push occurred.
-
-Use `STATUS: FAILED` if required work or checks remain incomplete.
-
-Use `STATUS: BLOCKED` only for a genuine human decision or architectural blocker.
-
-## Out of scope
+## Out of Scope
 
 Do not implement:
 
-- INT8 quantization;
-- fake quantization;
-- quantization-aware training;
 - 2:4 pruning;
-- sparse packing;
+- sparse metadata;
+- compressed sparse weights;
+- QAT;
+- distillation;
+- dynamic quantization;
+- mixed precision;
+- hidden layers;
+- multi-layer models;
 - compiler IR;
 - code generation;
 - Sparrow-V execution;
 - TinyNPU support;
-- multi-layer models;
-- hidden layers;
-- CNNs;
-- transformers;
 - ONNX;
-- notebooks as the primary workflow;
-- dataset downloads during tests;
-- hyperparameter sweeps;
-- experiment tracking services;
-- web dashboards;
-- cloud training;
-- GPU requirements;
-- hardware-aware cost models;
-- research experiments.
+- hardware cost models;
+- target selection;
+- research experiments;
+- dataset downloads;
+- hyperparameter sweeps.
 
 ## Validation
 
@@ -737,103 +668,156 @@ At final acceptance, run once:
 python3 -m compileall src scripts
 pytest
 make test-phase1
+make test-phase2
 make smoke
 make check
 make docs-check
 git diff --check
 ```
 
-Also run the full baseline once:
+Also run once:
+
+```text
+make run-int8-baseline
+```
+
+If Phase 1 artifacts are missing, regenerate them once with:
 
 ```text
 make run-fp32-baseline
 ```
 
-Verify that the generated summary reports reproducible results.
+Do not repeatedly retrain during unrelated checks.
 
-Do not repeatedly retrain during unrelated validation.
-
-## Acceptance criteria
+## Acceptance Criteria
 
 The milestone is complete only when:
 
-1. A deterministic four-class sensor fixture exists.
-2. Every sample has exactly 16 features.
-3. Stable train, validation, and test splits exist.
-4. No sample appears in more than one split.
-5. The fixture seed is recorded.
-6. Class order is fixed and documented.
-7. Fixture provenance is documented.
-8. Results are labelled as fixture accuracy.
-9. Preprocessing is fit on training data only.
-10. Validation and test use training statistics.
-11. A `Linear(16, 4)` PyTorch model exists.
-12. FP32 training is deterministic within documented limits.
-13. Training uses validation data for checkpoint selection.
-14. Test data is not used for tuning.
-15. Best checkpoint is saved.
-16. Configuration snapshot is saved.
-17. Train metrics are reported.
-18. Validation metrics are reported.
-19. Test metrics are reported.
-20. Confusion matrix is reported.
-21. Per-class counts are reported.
-22. Model parameter count is reported.
-23. Checkpoint size is reported.
-24. Test fixture accuracy is at least 85%.
-25. One command reproduces the full baseline.
-26. CLI commands work.
-27. Phase 1 focused tests pass.
-28. Tests require no internet.
-29. Tests require no GPU.
-30. Tests require no Sparrow-V checkout.
-31. Artifacts follow repository policy.
-32. Documentation matches implementation.
-33. README status is accurate.
-34. No quantization or pruning is implemented.
-35. No compiler or hardware execution is implemented.
-36. Sparrow-V is not modified.
-37. General repository checks pass.
-38. Documentation checks pass.
-39. `git diff --check` passes.
-40. No commit or push occurs.
-41. `docs/codex_milestone_result.md` is finalized.
+1. Training-only activation calibration exists.
+2. Calibration metadata records its split and sample count.
+3. Input INT8 quantization exists.
+4. Input scale is positive and deterministic.
+5. Input zero point is documented.
+6. Weight INT8 quantization exists.
+7. Weight quantization is per-output-channel or explicitly justified otherwise.
+8. Weight scales are positive and deterministic.
+9. Biases are quantized into the INT32 accumulator domain.
+10. Bias scales equal input scale times output-channel weight scale.
+11. Explicit integer affine inference exists.
+12. Integer inference does not use FP32 matrix multiplication.
+13. Signed INT8 products accumulate correctly.
+14. Accumulators are validated against signed INT32.
+15. Reconstructed logits are produced.
+16. Prediction semantics account for per-channel scales correctly.
+17. FP32 and INT8 metrics are compared.
+18. Train INT8 fixture accuracy is reported.
+19. Validation INT8 fixture accuracy is reported.
+20. Test INT8 fixture accuracy is reported.
+21. Prediction agreement is reported.
+22. Confusion matrix is reported.
+23. Maximum absolute logit error is reported.
+24. Mean absolute logit error is reported.
+25. RMS logit error is reported.
+26. Input clipping statistics are reported.
+27. Weight saturation statistics are reported.
+28. Bias range is reported.
+29. Accumulator range is reported.
+30. Theoretical accumulator bound is reported.
+31. Test INT8 fixture accuracy is at least 95%.
+32. Test accuracy drop from FP32 is no more than 2 percentage points.
+33. Test prediction agreement is at least 98%.
+34. Quantized artifacts are deterministic.
+35. Quantized model schema is validated.
+36. One command reproduces calibration, quantization, and evaluation.
+37. Phase 1 behavior remains passing.
+38. Phase 2 focused tests pass.
+39. Tests require no internet.
+40. Tests require no GPU.
+41. Tests require no Sparrow-V checkout.
+42. Documentation matches implementation.
+43. README status is accurate.
+44. No pruning or sparse packing is implemented.
+45. No compiler or hardware execution is implemented.
+46. Sparrow-V is not modified.
+47. General repository checks pass.
+48. Documentation checks pass.
+49. `git diff --check` passes.
+50. No commit or push occurs.
+51. `docs/codex_milestone_result.md` is finalized.
 
-## Stop conditions
+## Stop Conditions
 
 Stop for human review only if:
 
-- PyTorch cannot be installed or imported in the current environment;
-- a licensing or provenance issue prevents use of the chosen data;
-- deterministic splitting cannot be achieved;
-- the fixture cannot reach the minimum quality gate without making the classes trivially separable;
-- repository policy conflicts with storing required artifacts;
-- a major scaffold defect prevents the milestone.
+- the Phase 1 checkpoint or preprocessing artifacts cannot be loaded;
+- calibration cannot be performed without validation/test leakage;
+- the chosen quantization scheme cannot be represented with signed INT8 weights and activations plus INT32 bias;
+- prediction semantics cannot be made correct with per-channel scales;
+- observed or theoretical accumulation exceeds signed INT32;
+- the fixture accuracy gate cannot be met without modifying the test split;
+- a major Phase 1 correctness defect is discovered.
 
-Ordinary training instability, configuration bugs, test failures, path issues, and documentation work are not stop conditions.
+Ordinary quantization error, scale bugs, artifact issues, test failures, and documentation work are not stop conditions.
 
-## Token-efficiency instructions
+## Token-Efficiency Instructions
 
 Follow `AGENTS.md`.
 
 In particular:
 
-- read only the compact context and milestone first;
-- inspect only directly relevant files;
-- avoid repository-wide narration;
-- do not build future phases;
-- run focused tests while developing;
-- run aggregate checks once at final acceptance;
-- keep the result file concise;
-- do not perform broad hyperparameter searches;
-- do not repeatedly retrain when one bounded run is enough.
+- read compact context and milestone first;
+- inspect only Phase 1 and quantization-relevant files;
+- do not explore future compiler or target code;
+- avoid framework-wide abstractions;
+- run focused tests during development;
+- run aggregate checks once;
+- reuse the existing Phase 1 checkpoint;
+- do not repeatedly retrain;
+- keep the result file concise.
 
-## Next milestone
+## Result File
+
+Update:
+
+```text
+docs/codex_milestone_result.md
+```
+
+throughout the run.
+
+Finalize with `STATUS: COMPLETE` only if every required criterion and validation passes.
+
+Include:
+
+- quantization schemes;
+- calibration split and sample count;
+- input scale and zero point;
+- per-channel weight scales;
+- quantized bias range;
+- observed and theoretical accumulator ranges;
+- train/validation/test FP32 and INT8 fixture accuracy;
+- test prediction agreement;
+- confusion matrix;
+- quantization error metrics;
+- saturation statistics;
+- artifact paths;
+- exact commands and outcomes;
+- changed files;
+- remaining limitations;
+- next recommended milestone;
+- confirmation that Sparrow-V was not modified;
+- confirmation that no commit or push occurred.
+
+Use `STATUS: FAILED` if required work or checks remain incomplete.
+
+Use `STATUS: BLOCKED` only for a genuine human decision or architectural blocker.
+
+## Next Milestone
 
 The expected next milestone is:
 
 ```text
-Exact integer reference inference and INT8 post-training quantization
+Deterministic 2:4 structured pruning, sparse fine-tuning, and weight packing
 ```
 
 Do not implement it during this milestone.
