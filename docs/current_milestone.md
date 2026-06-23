@@ -1,51 +1,71 @@
-# Milestone: Exact INT8 Post-Training Quantization and Integer Reference Inference
+# Milestone: Deterministic 2:4 Structured Pruning, Sparse Fine-Tuning, and Weight Packing
 
 ## Objective
 
-Extend SparrowML’s deterministic FP32 baseline into a reproducible INT8 post-training quantization pipeline with exact integer reference inference.
+Extend SparrowML’s deterministic INT8 baseline into a reproducible 2:4 structured-sparse model pipeline.
 
 This milestone must:
 
-1. load the trained FP32 `Linear(16, 4)` checkpoint;
-2. calibrate activation ranges using training data only;
-3. quantize model inputs and weights to signed INT8;
-4. quantize biases into the INT32 accumulator domain;
-5. execute integer-only affine inference;
-6. dequantize logits for comparison with FP32;
-7. report quantization error, saturation, accuracy, and prediction agreement;
-8. emit stable quantized-model artifacts for the later 2:4 pruning and Sparrow-V export milestones.
+1. load the Phase 2 quantized `Linear(16, 4)` model;
+2. apply deterministic 2:4 pruning to every consecutive group of four weights;
+3. preserve the selected sparsity mask during optional fine-tuning;
+4. compare dense INT8 and sparse INT8 inference;
+5. encode all sparse groups using Sparrow-V-compatible metadata;
+6. pack two retained INT8 weights per group;
+7. exactly reconstruct the sparse dense-equivalent matrix;
+8. run explicit compressed sparse integer reference inference;
+9. report accuracy, prediction agreement, logit error, sparsity, operation count, and storage;
+10. emit stable sparse artifacts for later compiler and Sparrow-V deployment milestones.
 
-This milestone is about quantization correctness and integer semantics.
+This milestone is about structured sparsity correctness, sparse-model quality, and packing contracts.
 
-Do not implement structured pruning, sparse packing, compiler lowering, Sparrow-V execution, TinyNPU integration, or quantization-aware training.
+Do not implement compiler IR, program generation, Sparrow-V execution, TinyNPU integration, new hardware instructions, or hardware-aware pruning yet.
 
 ## Baseline
 
-Phase 1 currently provides:
+Phase 1 provides:
 
-- a deterministic synthetic vibration-fault-style fixture;
-- 512 samples;
-- 16 finite features per sample;
+- a deterministic 512-sample synthetic sensor fixture;
+- 16 input features;
 - four classes:
   - `normal`
   - `inner`
   - `outer`
-  - `ball`
-- seed `20260623`;
-- balanced deterministic splits:
-  - 360 train;
-  - 76 validation;
-  - 76 test;
+  - `ball`;
+- train, validation, and test splits;
 - train-only standardization;
-- preprocessing version `standardize_train_v1`;
-- a CPU FP32 `Linear(16, 4)` model;
-- 68 trainable parameters;
-- deterministic training and checkpoint selection;
-- FP32 fixture accuracy of 100% on train, validation, and test;
-- generated Phase 1 artifacts under `artifacts/phase1_fp32/`;
-- passing Phase 1 and repository checks.
+- a deterministic FP32 `Linear(16, 4)` classifier.
 
-The 100% result is synthetic fixture accuracy only and is not a real-world model-quality claim.
+Phase 2 provides:
+
+- training-only activation calibration;
+- signed per-tensor symmetric INT8 inputs;
+- signed per-output-channel symmetric INT8 weights;
+- INT32 bias quantization;
+- explicit integer reference inference;
+- reconstructed per-channel logits;
+- deterministic quantized-model artifacts;
+- 100% FP32 and INT8 synthetic-fixture accuracy and prediction agreement;
+- no activation clipping in the reference run;
+- observed and conservative accumulators within signed INT32.
+
+The current model contains:
+
+```text
+4 output channels × 16 input weights = 64 INT8 weights
+```
+
+Each output row contains four consecutive groups of four weights:
+
+```text
+16 weights ÷ 4 = 4 groups per output
+```
+
+Across four outputs:
+
+```text
+4 groups × 4 outputs = 16 sparse groups
+```
 
 ## Relevant Context
 
@@ -58,511 +78,714 @@ Read first:
 - `docs/data_contracts.md`
 - `docs/experiment_policy.md`
 - `docs/results/phase1_fp32_baseline.md`
-- `configs/experiments/fp32_sensor_baseline.yaml`
-- Phase 1 fixture, preprocessing, model, training, evaluation, and artifact modules.
+- `docs/results/phase2_int8_ptq.md`
+- `configs/experiments/int8_ptq_baseline.yaml`
+- Phase 2 quantization artifacts and implementation modules.
 
 Inspect only directly relevant files after that.
 
-Do not perform a broad repository audit unless a concrete failure requires it.
+Do not explore Sparrow-V implementation files during this milestone.
 
-## Quantization Contract
+## Sparse Structure
 
-Implement explicit affine quantization semantics.
+Apply 2:4 structured sparsity independently to every consecutive four-weight group in each output row.
 
-For a real-valued tensor `x`:
+For a group:
 
 ```text
-q = clamp(round(x / scale) + zero_point, qmin, qmax)
+[w0, w1, w2, w3]
 ```
 
-For dequantization:
+retain exactly two positions and set exactly two positions to zero.
+
+The grouping axis must be the input-feature dimension.
+
+For `Linear(16, 4)`:
+
+- output channel remains unchanged;
+- each output row is divided into groups `[0:4]`, `[4:8]`, `[8:12]`, `[12:16]`.
+
+Document the axis and ordering explicitly.
+
+## Deterministic Pruning Rule
+
+For each group:
+
+1. compute absolute magnitude of each weight;
+2. retain the two weights with largest absolute magnitude;
+3. if magnitudes tie, retain lower lane indices first;
+4. order selected lanes in ascending lane-index order;
+5. set all unselected positions to integer zero.
+
+Example:
 
 ```text
-x_hat = scale × (q - zero_point)
+weights = [5, -9, 9, 2]
+magnitudes = [5, 9, 9, 2]
+selected lanes = [1, 2]
 ```
 
-Use signed INT8 ranges:
+For complete ties:
 
 ```text
-qmin = -128
-qmax = 127
+weights = [4, -4, 4, -4]
+selected lanes = [0, 1]
 ```
 
-Document exactly:
+The implementation must be deterministic across repeated runs.
 
-- rounding behavior;
-- clamping behavior;
-- scale derivation;
-- zero-point derivation;
-- accumulator width;
-- bias quantization;
-- requantization or dequantization behavior.
+Do not use random pruning.
 
-Do not rely on opaque framework quantization kernels as the only implementation.
+## Metadata Encoding
 
-The milestone must have an inspectable integer reference path.
+Use Sparrow-V-compatible 3-bit metadata:
 
-## Quantization Scheme
+| Metadata | Selected lanes |
+|---|---|
+| `000` | `{0,1}` |
+| `001` | `{0,2}` |
+| `010` | `{0,3}` |
+| `011` | `{1,2}` |
+| `100` | `{1,3}` |
+| `101` | `{2,3}` |
 
-Use a simple, Sparrow-V-compatible scheme.
+Reserve:
 
-### Input activations
+- `110`
+- `111`
 
-Use signed INT8 affine or symmetric quantization.
+as invalid.
 
-Preferred initial scheme:
+For every group:
+
+- compressed weight 0 maps to the lower selected lane;
+- compressed weight 1 maps to the higher selected lane.
+
+The sparse artifact must never emit invalid metadata.
+
+## Compressed Weight Representation
+
+For each four-weight group, store:
 
 ```text
-per-tensor symmetric INT8
-zero_point = 0
+compressed_weight_0: signed INT8
+compressed_weight_1: signed INT8
+metadata: 3 bits
 ```
 
-Calibration must use only the training split.
+The packed representation must preserve:
 
-The activation scale should be based on a documented range policy, such as:
+- output-channel ordering;
+- group ordering;
+- lane ordering;
+- signed INT8 values;
+- deterministic metadata ordering.
+
+For the current model:
 
 ```text
-max_abs / 127
+16 groups × 2 weights = 32 compressed INT8 weights
 ```
 
-If a percentile or clipping policy is used, it must be configurable and documented.
-
-### Weights
-
-Use signed INT8 symmetric quantization.
-
-Preferred scheme:
+Raw compressed-weight storage:
 
 ```text
-per-output-channel symmetric INT8
+32 bytes
 ```
 
-For `Linear(16, 4)`, each output row receives its own weight scale.
-
-This is preferred because it is simple, accurate, and compatible with later hardware export.
-
-If per-tensor weight quantization is chosen instead, justify it and record the accuracy trade-off.
-
-### Biases
-
-Quantize each FP32 bias into signed INT32 using:
+Raw metadata storage:
 
 ```text
-bias_scale[channel] = input_scale × weight_scale[channel]
+16 groups × 3 bits = 48 bits
 ```
 
-Then:
+Packed metadata storage:
 
 ```text
-bias_int32[channel] = round(bias_fp32[channel] / bias_scale[channel])
+6 bytes
 ```
 
-Validate against signed INT32 bounds.
-
-### Accumulation
-
-Compute exact integer logits as:
+Total sparse weight representation:
 
 ```text
-acc[channel] =
+32 + 6 = 38 bytes
+```
+
+Dense weight storage:
+
+```text
+64 bytes
+```
+
+Expected reduction:
+
+```text
+(64 - 38) / 64 = 40.625%
+```
+
+Biases and scales must be reported separately and must not be silently included in only one side of the comparison.
+
+## Sparse Dense-Equivalent Matrix
+
+Create a sparse dense-equivalent INT8 matrix with the same shape as the dense quantized matrix:
+
+```text
+[4, 16]
+```
+
+It must contain:
+
+- retained INT8 values in selected positions;
+- exact integer zero in pruned positions.
+
+Require:
+
+```text
+decompress(compressed_weights, metadata)
+==
+sparse_dense_equivalent_weights
+```
+
+for every output channel and group.
+
+The comparison must be exact integer equality.
+
+## Sparse Integer Reference Inference
+
+Implement two independent sparse inference paths.
+
+### Dense-form sparse inference
+
+Use the sparse dense-equivalent matrix:
+
+```text
+acc_sparse_dense[channel] =
     bias_int32[channel]
-    + Σ input_int8[i] × weight_int8[channel, i]
+    + Σ input_int8[i] × sparse_weight_int8[channel, i]
 ```
 
-Use signed INT32 or wider host-side arithmetic for safety, while validating that deployed accumulator values fit signed INT32.
+### Compressed sparse inference
 
-The integer accumulator must not use FP32 multiplication internally.
+For each four-feature group:
 
-### Output reconstruction
+1. decode metadata;
+2. select two input lanes;
+3. multiply selected input INT8 values by the two compressed INT8 weights;
+4. accumulate only those two products.
 
-For each output channel:
+Require exact equality:
 
 ```text
-logit_fp32_approx[channel] =
-    acc[channel] × input_scale × weight_scale[channel]
+compressed_sparse_accumulators
+==
+sparse_dense_form_accumulators
 ```
 
-Predicted class is:
+for every sample and output channel.
+
+Do not implement compressed sparse inference by first decompressing and then calling the dense path.
+
+The compressed path must explicitly decode metadata and execute two products per group.
+
+## Operation Accounting
+
+For the current model, per sample:
+
+### Dense INT8
 
 ```text
-argmax(acc)
+64 executed multiplications
+0 skipped multiplications
 ```
 
-only if per-channel scale differences do not invalidate direct accumulator comparison.
+### Sparse INT8
 
-Because per-channel weight scales may differ, the canonical predicted class must be computed from reconstructed real-valued logits unless a mathematically equivalent common-scale transform is implemented and documented.
-
-Do not incorrectly apply `argmax` directly across differently scaled accumulators.
-
-## Calibration
-
-Implement deterministic calibration using training data only.
-
-Calibration must report:
-
-- minimum input value;
-- maximum input value;
-- maximum absolute value;
-- selected activation scale;
-- zero point;
-- number and percentage of clipped values;
-- calibration sample count;
-- calibration split.
-
-Validation and test data must not influence calibration.
-
-Persist calibration metadata.
-
-## Exact Integer Reference
-
-Create a standalone integer inference implementation that accepts:
-
-- quantized INT8 input vector;
-- quantized INT8 weight matrix;
-- INT32 bias vector;
-- activation scale;
-- per-channel weight scales;
-- class metadata.
-
-It must output:
-
-- INT32 accumulators;
-- reconstructed FP32 logits;
-- predicted class;
-- saturation or overflow diagnostics.
-
-The implementation must not call `torch.nn.Linear` for the integer computation.
-
-PyTorch or NumPy may be used for tensor storage, but the arithmetic semantics must remain explicit and testable.
-
-## FP32 Comparison
-
-For every train, validation, and test sample, compare:
-
-- FP32 logits;
-- dequantized INT8 logits;
-- FP32 predicted class;
-- INT8 predicted class;
-- expected label.
+```text
+16 groups × 2 executed = 32 executed multiplications
+16 groups × 2 skipped = 32 skipped multiplications
+```
 
 Report:
 
-- split-level FP32 fixture accuracy;
-- split-level INT8 fixture accuracy;
-- FP32/INT8 prediction agreement;
-- number of prediction disagreements;
-- maximum absolute logit error;
-- mean absolute logit error;
-- root mean square logit error;
-- per-output-channel error statistics.
+- executed multiplications;
+- skipped multiplications;
+- total possible dense multiplications;
+- arithmetic reduction percentage.
 
-Keep metrics small and directly relevant.
+Expected sparse arithmetic reduction:
 
-## Saturation and Overflow Reporting
+```text
+50%
+```
 
-Report:
+The operation count must come from the sparse structure, not a hardcoded summary without validation.
 
-### Input quantization
+## Sparse Fine-Tuning
 
-- total values quantized;
-- values clipped to `-128`;
-- values clipped to `127`;
-- total clipped values;
-- clipping percentage.
+Implement a bounded optional mask-preserving fine-tuning stage.
 
-### Weight quantization
+Preferred sequence:
 
-- total values quantized;
-- values at `-128`;
-- values at `127`;
-- per-channel scale;
-- zero-scale handling.
+1. begin from the Phase 1 FP32 checkpoint or Phase 2 quantized model, according to the simplest sound design;
+2. derive a deterministic 2:4 mask;
+3. apply the mask to FP32 weights;
+4. fine-tune for a small bounded number of epochs;
+5. reapply the same mask after every optimizer step;
+6. quantize the fine-tuned sparse FP32 weights using the existing Phase 2 scheme;
+7. evaluate sparse INT8 inference.
 
-### Bias and accumulator
+Requirements:
 
-- minimum and maximum quantized bias;
+- the selected mask must not change during fine-tuning;
+- pruned weights must remain exactly zero;
+- no test data may influence checkpoint selection;
+- use validation loss or validation accuracy for sparse checkpoint selection;
+- fixed seeds;
+- CPU-only support;
+- bounded runtime.
+
+Recommended default:
+
+```text
+epochs: 10
+learning rate: 1e-3
+```
+
+Adjust only if needed for stable behavior.
+
+If direct post-quantization pruning already meets all quality gates, still implement the fine-tuning path, but report both:
+
+- sparse INT8 before fine-tuning;
+- sparse INT8 after fine-tuning.
+
+Do not perform a broad hyperparameter sweep.
+
+## Mask Semantics
+
+Define a stable mask representation containing:
+
+- tensor shape;
+- output channel;
+- group index;
+- selected lane indices;
+- metadata value;
+- binary mask values.
+
+Require:
+
+- exactly two ones per group;
+- exactly two zeros per group;
+- 32 retained weights total;
+- 32 pruned weights total.
+
+The mask must be reproducible from the same source model and configuration.
+
+## Quality Comparisons
+
+Compare:
+
+1. FP32 dense;
+2. INT8 dense;
+3. INT8 sparse before fine-tuning;
+4. INT8 sparse after fine-tuning.
+
+For each split report:
+
+- fixture accuracy;
+- confusion matrix;
+- prediction agreement with dense INT8;
+- prediction agreement with FP32;
+- number of disagreements;
+- maximum absolute logit difference from dense INT8;
+- mean absolute logit difference;
+- RMS logit difference.
+
+Keep claims explicitly scoped to the synthetic fixture.
+
+## Acceptance Quality Gates
+
+Required after sparse fine-tuning:
+
+- sparse INT8 test fixture accuracy at least 95%;
+- sparse INT8 test accuracy drop versus dense INT8 no more than 5 percentage points;
+- sparse/dense INT8 test prediction agreement at least 95%;
+- compressed and dense-form sparse accumulators match exactly;
+- all observed sparse accumulators fit signed INT32;
+- every group follows 2:4 structure;
+- generated sparse artifacts are deterministic.
+
+If pre-fine-tuning sparse quality already passes, report it but do not skip implementation of mask-preserving fine-tuning.
+
+Do not modify the test set to meet the gate.
+
+## Scale Handling
+
+Preserve the Phase 2 quantization contract.
+
+Use:
+
+- existing input scale and zero point;
+- per-output-channel weight scales;
+- INT32 bias domain;
+- reconstructed per-channel logits for prediction.
+
+If sparse fine-tuning changes FP32 weights, regenerate sparse per-channel weight scales and sparse INT32 biases consistently.
+
+Document whether dense and sparse models use:
+
+- independent per-channel scales; or
+- shared dense scales.
+
+Prefer independent sparse scales if this improves correctness and is clearly represented in the artifact.
+
+Do not compare raw accumulators across models with different per-channel scales as though they share a common real-value domain.
+
+## Accumulator Safety
+
+Report for sparse inference:
+
 - minimum and maximum observed accumulator;
-- whether all observed accumulators fit signed INT32;
-- theoretical conservative accumulator bound;
-- whether the theoretical bound fits signed INT32.
+- conservative accumulator bound;
+- signed INT32 fit status.
 
-Fail clearly if any bias or accumulator exceeds the supported range.
+The conservative sparse bound should account for:
 
-## Quantization Error Gates
+- two executed products per group;
+- four groups per output;
+- quantized bias.
 
-Use bounded acceptance gates.
+Fail if observed or conservative values exceed signed INT32.
 
-Required:
+## Sparse Artifact Format
 
-- INT8 test fixture accuracy must be at least 95%;
-- INT8 test fixture accuracy must not drop by more than 2 percentage points from FP32;
-- FP32/INT8 test prediction agreement must be at least 98%;
-- all observed accumulators must fit signed INT32;
-- no NaN or infinity in reconstructed logits;
-- quantization artifacts must be deterministic.
+Define a stable machine-readable sparse-model artifact.
 
-Because the fixture is simple, 100% INT8 fixture accuracy may occur. Report it honestly without presenting it as real-world performance.
-
-Do not change the test set to satisfy the gate.
-
-## Quantized Artifact Format
-
-Define a stable machine-readable quantized model artifact.
-
-Preferred format:
+Preferred:
 
 ```text
-JSON manifest + binary or JSON tensor payloads
+JSON manifest with embedded small tensor payloads
 ```
-
-For this small model, a single JSON file is acceptable if it remains readable and deterministic.
 
 The artifact must include:
 
 - format version;
 - model name;
-- source FP32 checkpoint identity;
+- source dense INT8 artifact identity;
 - feature count;
 - class count;
 - class names;
-- quantization scheme;
-- input scale;
-- input zero point;
-- weight scales;
-- weight zero points;
-- INT8 weight matrix;
-- INT32 bias vector;
+- grouping axis;
+- group size;
+- nonzero count per group;
+- pruning rule;
+- tie-breaking rule;
+- mask;
+- compressed INT8 weights;
+- metadata values;
+- packed metadata bytes;
+- per-channel sparse weight scales;
+- input scale and zero point;
+- INT32 biases;
 - tensor shapes;
-- lane/order conventions;
-- preprocessing version;
-- calibration split and sample count;
 - accumulator type;
-- creation configuration;
-- optional content hashes.
+- preprocessing version;
+- fine-tuning configuration;
+- storage accounting;
+- optional hashes.
 
-Use repository-relative paths.
+Use repository-relative paths only.
 
-Do not include machine-specific absolute paths.
+## Packing Format
+
+Implement deterministic metadata packing.
+
+Define and document:
+
+- group traversal order;
+- bit order inside metadata values;
+- byte packing order;
+- padding-bit behavior;
+- expected packed length.
+
+For 16 metadata values:
+
+```text
+16 × 3 = 48 bits = 6 bytes
+```
+
+Require:
+
+- pack → unpack round-trip;
+- no nonzero padding bits;
+- deterministic byte output;
+- invalid metadata rejected.
 
 ## Generated Artifacts
 
-Use an output directory such as:
+Use:
 
 ```text
-artifacts/phase2_int8/
+artifacts/phase3_sparse/
 ```
 
-Generated artifacts should remain ignored unless repository policy explicitly tracks a small golden fixture.
+Generated artifacts should remain ignored unless repository policy says otherwise.
 
 At minimum generate:
 
 - configuration snapshot;
-- calibration report;
-- quantized model artifact;
-- integer-evaluation metrics JSON;
-- error-statistics JSON;
-- confusion matrix;
+- pruning mask;
+- sparse FP32 or sparse checkpoint;
+- sparse quantized-model artifact;
+- packed metadata binary or JSON representation;
+- storage report;
+- sparse evaluation metrics;
+- sparse confusion matrices;
 - prediction-agreement report;
+- arithmetic-count report;
 - human-readable Markdown summary.
 
-Do not overwrite Phase 1 artifacts.
+Do not overwrite Phase 1 or Phase 2 artifacts.
 
 ## Configuration
 
-Add a dedicated Phase 2 configuration, preferably:
+Add:
 
 ```text
-configs/experiments/int8_ptq_baseline.yaml
+configs/experiments/sparse_2of4_baseline.yaml
 ```
 
 Include:
 
-- source Phase 1 checkpoint path;
-- source preprocessing metadata path;
-- input quantization scheme;
-- weight quantization scheme;
-- calibration policy;
-- clipping policy;
-- accumulator type;
+- source Phase 1 checkpoint;
+- source Phase 2 quantized artifact;
+- group size;
+- nonzero count;
+- grouping axis;
+- pruning rule;
+- tie-breaking rule;
+- fine-tuning epochs;
+- learning rate;
+- seed;
 - acceptance thresholds;
 - output directory;
-- deterministic seed.
+- metadata packing version.
 
-Avoid machine-specific absolute paths.
+Avoid machine-specific paths.
 
 ## CLI
 
-Extend the CLI with bounded commands such as:
+Add bounded commands such as:
 
 ```text
-sparrowml calibrate-int8
-sparrowml quantize-int8
-sparrowml evaluate-int8
-sparrowml run-int8-baseline
+sparrowml prune-2of4
+sparrowml finetune-sparse
+sparrowml pack-sparse
+sparrowml evaluate-sparse
+sparrowml run-sparse-baseline
 ```
 
-Exact names may be adjusted to match existing conventions.
+Exact command names may follow existing conventions.
 
-Preferred behavior:
+### `prune-2of4`
 
-### `calibrate-int8`
+- load source model;
+- create deterministic mask;
+- emit sparse dense-equivalent weights;
+- report pattern distribution.
 
-- load Phase 1 fixture and preprocessing;
-- use training split only;
-- emit activation calibration metadata.
+### `finetune-sparse`
 
-### `quantize-int8`
+- use fixed mask;
+- preserve zeros;
+- select best checkpoint using validation data;
+- emit sparse checkpoint.
 
-- load the best FP32 checkpoint;
-- quantize weights and biases;
-- emit the quantized-model artifact;
-- validate tensor ranges.
+### `pack-sparse`
 
-### `evaluate-int8`
+- quantize sparse model;
+- generate compressed weights;
+- generate metadata;
+- pack metadata;
+- verify exact decompression.
 
-- run exact integer reference inference;
-- compare with FP32;
-- emit metrics and summaries.
+### `evaluate-sparse`
 
-### `run-int8-baseline`
+- run dense-form sparse inference;
+- run compressed sparse inference;
+- compare with dense INT8;
+- emit quality and storage reports.
 
-- perform calibration, quantization, evaluation, and reporting in one reproducible command.
+### `run-sparse-baseline`
 
-Use proper exit codes.
+- perform pruning, fine-tuning, quantization, packing, evaluation, and reporting in one deterministic command.
+
+Use clear error messages and proper exit codes.
 
 ## Package Structure
 
-Add only the necessary modules.
+Add only necessary modules.
 
-A reasonable structure is:
+Suggested:
 
 ```text
 src/sparrowml/
-├── quantization/
+├── sparsity/
 │   ├── __init__.py
-│   ├── affine.py
-│   ├── calibration.py
-│   ├── weights.py
-│   ├── bias.py
+│   ├── pruning.py
+│   ├── masks.py
+│   ├── finetune.py
+│   ├── metadata.py
+│   ├── packing.py
 │   ├── integer_reference.py
 │   └── artifacts.py
 └── evaluation/
-    └── quantization_metrics.py
+    └── sparsity_metrics.py
 ```
 
-Adjust to fit the existing package.
+Do not build a general-purpose pruning framework.
 
-Do not add a generalized graph quantization framework.
+## Pattern Distribution
+
+Report how often each legal metadata pattern occurs:
+
+```text
+000
+001
+010
+011
+100
+101
+```
+
+Require:
+
+- total pattern count equals 16;
+- invalid patterns never occur.
+
+Do not force equal pattern distribution.
 
 ## Tests
 
 Add focused tests for:
 
-### Quantization primitives
+### Pruning
 
-- scale calculation;
-- zero-point calculation;
-- symmetric INT8 behavior;
-- rounding policy;
-- clamping;
-- `-128` and `127`;
-- zero-valued tensor handling;
+- exactly two retained weights per group;
+- exactly two zeros per group;
+- correct grouping axis;
+- largest-magnitude selection;
+- lower-index tie-breaking;
+- negative values;
+- zero values;
+- `-128`;
+- `127`;
+- deterministic masks.
+
+### Metadata
+
+- all six legal patterns;
+- lane-pair encoding;
+- lane-pair decoding;
+- invalid metadata rejection;
+- ascending selected-lane order.
+
+### Compression
+
+- compressed weight order;
+- exact decompression;
+- shape validation;
+- signed INT8 preservation;
 - deterministic output.
 
-### Per-channel weights
+### Metadata packing
 
-- correct output-channel axis;
-- one scale per output;
-- correct INT8 shape;
-- reconstruction error;
-- zero-row handling;
-- range validation.
+- pack/unpack round-trip;
+- expected six-byte output;
+- bit order;
+- padding bits;
+- invalid value rejection.
 
-### Bias quantization
+### Fine-tuning
 
-- correct combined scale;
-- correct INT32 values;
-- overflow rejection;
-- zero-scale rejection.
+- mask remains unchanged;
+- pruned weights remain zero after optimization;
+- validation-based checkpoint selection;
+- fixed seeds;
+- short smoke run;
+- no GPU.
 
-### Integer inference
+### Sparse integer inference
 
-- hand-computed small example;
-- signed multiplication;
+- hand-computed example;
+- metadata lane selection;
+- two products per group;
 - negative values;
-- INT32 accumulation;
-- reconstructed logits;
-- per-channel output scales;
-- correct prediction semantics.
+- exact equality with dense-form sparse inference;
+- per-channel reconstruction.
 
-### Calibration
+### Storage accounting
 
-- training split only;
-- stable sample count;
-- deterministic scale;
-- no validation/test leakage;
-- clipping statistics.
-
-### Artifact schemas
-
-- required fields;
-- tensor dimensions;
-- integer ranges;
-- scale positivity;
-- class consistency;
-- relative paths;
-- unsupported format version.
+- dense 64 bytes;
+- compressed weights 32 bytes;
+- metadata 6 bytes;
+- sparse total 38 bytes;
+- reduction 40.625%;
+- bias and scales reported separately.
 
 ### Evaluation
 
-- confusion matrix shape;
-- agreement calculation;
+- accuracy comparison;
+- prediction agreement;
+- disagreement count;
 - error metrics;
-- saturation counts;
-- accumulator range checks.
+- pattern distribution;
+- operation counts;
+- accumulator safety.
+
+### Artifacts
+
+- required fields;
+- deterministic hashes;
+- correct tensor sizes;
+- valid metadata;
+- relative paths;
+- unsupported format rejection.
 
 ### CLI
 
 - commands parse;
-- smoke quantization run succeeds;
-- missing Phase 1 checkpoint fails clearly;
-- invalid config fails clearly.
+- smoke sparse run succeeds;
+- missing Phase 2 artifact fails clearly;
+- invalid configuration fails clearly.
 
 Tests must not:
 
 - require internet;
-- require a GPU;
+- require GPU;
 - require Sparrow-V;
 - modify Sparrow-V;
-- retrain the full FP32 model repeatedly.
-
-Use the existing Phase 1 checkpoint if present, or create minimal temporary models in focused tests.
+- perform long fine-tuning runs repeatedly.
 
 ## Make Targets
 
-Add stable targets such as:
+Add:
 
 ```text
-calibrate-int8
-quantize-int8
-evaluate-int8
-run-int8-baseline
-test-phase2
+prune-2of4
+finetune-sparse
+pack-sparse
+evaluate-sparse
+run-sparse-baseline
+test-phase3
 ```
 
 Update `make help`.
 
-Recommended:
+`make test-phase3` should run focused Phase 3 tests only.
 
-```text
-make test-phase2
-```
+Do not rerun full Phase 1 training in every sparse test.
 
-runs focused Phase 2 tests only.
-
-Do not include the full FP32 retraining run inside every Phase 2 test.
-
-The aggregate baseline may depend on existing Phase 1 artifacts and fail clearly with instructions if they are missing.
+The full sparse baseline may regenerate Phase 1 or Phase 2 artifacts only when missing.
 
 ## Documentation
 
@@ -574,30 +797,29 @@ Update or add:
 - `docs/data_contracts.md`;
 - `docs/experiment_policy.md`;
 - `docs/codex_context.md`;
-- one Phase 2 results document.
+- one Phase 3 results document.
 
 Suggested:
 
 ```text
-docs/results/phase2_int8_ptq.md
+docs/results/phase3_sparse_2of4.md
 ```
 
 Document:
 
-- quantization equations;
-- rounding and clipping semantics;
-- calibration policy;
-- input scale and zero point;
-- per-channel weight scales;
-- bias quantization;
-- exact integer accumulation;
-- prediction semantics with per-channel scales;
-- fixture accuracy;
-- prediction agreement;
-- error metrics;
-- saturation;
-- accumulator range;
-- artifact format;
+- grouping axis;
+- deterministic pruning;
+- tie-breaking;
+- mask semantics;
+- fine-tuning procedure;
+- metadata mapping;
+- compressed-weight ordering;
+- packing format;
+- dense/sparse integer inference;
+- quality comparisons;
+- operation reduction;
+- storage reduction;
+- accumulator safety;
 - limitations;
 - reproduction commands.
 
@@ -608,29 +830,28 @@ Keep `docs/codex_context.md` concise.
 Update README status to:
 
 ```text
-Phase 2 INT8 post-training quantization implemented
+Phase 3 deterministic 2:4 structured sparsity implemented
 ```
 
 Do not claim:
 
-- structured sparsity;
 - compiler lowering;
-- Sparrow-V deployment;
-- hardware acceleration;
-- real-world accuracy;
-- quantization-aware training.
+- Sparrow-V execution;
+- hardware speedup;
+- real-world model accuracy;
+- hardware-aware pruning;
+- general N:M sparsity.
 
 ## Existing Behavior Preservation
 
 Preserve:
 
-- Phase 1 fixture generation;
-- Phase 1 FP32 training;
-- Phase 1 evaluation;
+- Phase 1 fixture and FP32 baseline;
+- Phase 2 quantization and integer inference;
 - all existing CLI commands;
 - all existing tests;
-- repository contracts;
-- Sparrow-V target boundary.
+- artifact contracts;
+- Sparrow-V boundary.
 
 Do not modify Sparrow-V.
 
@@ -638,25 +859,27 @@ Do not modify Sparrow-V.
 
 Do not implement:
 
-- 2:4 pruning;
-- sparse metadata;
-- compressed sparse weights;
+- compiler IR;
+- instruction generation;
+- Sparrow-V execution;
+- TinyNPU execution;
+- sparse-load instructions;
+- new hardware operations;
+- hardware-aware pruning;
+- latency-aware pruning;
+- layer-adaptive sparsity;
+- general N:M sparsity;
+- unstructured sparsity;
+- mixed precision;
 - QAT;
 - distillation;
-- dynamic quantization;
-- mixed precision;
-- hidden layers;
 - multi-layer models;
-- compiler IR;
-- code generation;
-- Sparrow-V execution;
-- TinyNPU support;
 - ONNX;
-- hardware cost models;
 - target selection;
-- research experiments;
-- dataset downloads;
-- hyperparameter sweeps.
+- hardware cost models;
+- real dataset download;
+- hyperparameter sweeps;
+- research experiments.
 
 ## Validation
 
@@ -669,6 +892,7 @@ python3 -m compileall src scripts
 pytest
 make test-phase1
 make test-phase2
+make test-phase3
 make smoke
 make check
 make docs-check
@@ -678,86 +902,106 @@ git diff --check
 Also run once:
 
 ```text
-make run-int8-baseline
+make run-sparse-baseline
 ```
 
-If Phase 1 artifacts are missing, regenerate them once with:
+If prerequisites are missing, regenerate once using:
 
 ```text
 make run-fp32-baseline
+make run-int8-baseline
 ```
 
-Do not repeatedly retrain during unrelated checks.
+Do not repeatedly retrain or re-quantize during unrelated validation.
 
 ## Acceptance Criteria
 
 The milestone is complete only when:
 
-1. Training-only activation calibration exists.
-2. Calibration metadata records its split and sample count.
-3. Input INT8 quantization exists.
-4. Input scale is positive and deterministic.
-5. Input zero point is documented.
-6. Weight INT8 quantization exists.
-7. Weight quantization is per-output-channel or explicitly justified otherwise.
-8. Weight scales are positive and deterministic.
-9. Biases are quantized into the INT32 accumulator domain.
-10. Bias scales equal input scale times output-channel weight scale.
-11. Explicit integer affine inference exists.
-12. Integer inference does not use FP32 matrix multiplication.
-13. Signed INT8 products accumulate correctly.
-14. Accumulators are validated against signed INT32.
-15. Reconstructed logits are produced.
-16. Prediction semantics account for per-channel scales correctly.
-17. FP32 and INT8 metrics are compared.
-18. Train INT8 fixture accuracy is reported.
-19. Validation INT8 fixture accuracy is reported.
-20. Test INT8 fixture accuracy is reported.
-21. Prediction agreement is reported.
-22. Confusion matrix is reported.
-23. Maximum absolute logit error is reported.
-24. Mean absolute logit error is reported.
-25. RMS logit error is reported.
-26. Input clipping statistics are reported.
-27. Weight saturation statistics are reported.
-28. Bias range is reported.
-29. Accumulator range is reported.
-30. Theoretical accumulator bound is reported.
-31. Test INT8 fixture accuracy is at least 95%.
-32. Test accuracy drop from FP32 is no more than 2 percentage points.
-33. Test prediction agreement is at least 98%.
-34. Quantized artifacts are deterministic.
-35. Quantized model schema is validated.
-36. One command reproduces calibration, quantization, and evaluation.
-37. Phase 1 behavior remains passing.
-38. Phase 2 focused tests pass.
-39. Tests require no internet.
-40. Tests require no GPU.
-41. Tests require no Sparrow-V checkout.
-42. Documentation matches implementation.
-43. README status is accurate.
-44. No pruning or sparse packing is implemented.
-45. No compiler or hardware execution is implemented.
-46. Sparrow-V is not modified.
-47. General repository checks pass.
-48. Documentation checks pass.
-49. `git diff --check` passes.
-50. No commit or push occurs.
-51. `docs/codex_milestone_result.md` is finalized.
+1. Deterministic 2:4 pruning exists.
+2. Grouping occurs along the input-feature axis.
+3. Every group has four weights.
+4. Every group retains exactly two weights.
+5. Every group prunes exactly two weights.
+6. Largest-magnitude selection is used.
+7. Lower-lane tie-breaking is used.
+8. Mask generation is deterministic.
+9. Mask format is validated.
+10. All six legal metadata values are supported.
+11. Invalid metadata values are rejected.
+12. Compressed weight ordering matches Sparrow-V.
+13. Sparse dense-equivalent matrix is generated.
+14. Exact decompression works.
+15. Metadata packing works.
+16. Packed metadata length is six bytes.
+17. Pack/unpack round-trip is exact.
+18. Fine-tuning preserves the mask.
+19. Pruned weights remain exactly zero.
+20. Validation data controls checkpoint selection.
+21. Test data is not used for tuning.
+22. Sparse INT8 quantization is implemented.
+23. Sparse INT32 biases are consistent with sparse scales.
+24. Dense-form sparse integer inference exists.
+25. Compressed sparse integer inference exists.
+26. Compressed inference does not simply decompress first.
+27. Both sparse inference paths produce identical accumulators.
+28. Reconstructed sparse logits are produced.
+29. Dense INT8 and sparse INT8 metrics are compared.
+30. Pre-fine-tuning sparse metrics are reported.
+31. Post-fine-tuning sparse metrics are reported.
+32. Sparse test fixture accuracy is at least 95%.
+33. Sparse accuracy drop versus dense INT8 is no more than 5 percentage points.
+34. Sparse/dense prediction agreement is at least 95%.
+35. Sparse confusion matrix is reported.
+36. Logit error metrics are reported.
+37. Pattern distribution is reported.
+38. Pattern count equals 16.
+39. Invalid patterns never occur.
+40. Sparse executed multiplication count is 32 per sample.
+41. Sparse skipped multiplication count is 32 per sample.
+42. Arithmetic reduction is 50%.
+43. Dense weight storage is reported as 64 bytes.
+44. Compressed weight storage is reported as 32 bytes.
+45. Metadata storage is reported as 6 bytes.
+46. Total sparse storage is reported as 38 bytes.
+47. Storage reduction is reported as 40.625%.
+48. Biases and scales are accounted for separately.
+49. Sparse observed accumulators fit signed INT32.
+50. Sparse conservative bound fits signed INT32.
+51. Sparse artifact format is validated.
+52. Sparse artifacts are deterministic.
+53. One command reproduces the complete sparse baseline.
+54. Phase 1 remains passing.
+55. Phase 2 remains passing.
+56. Phase 3 focused tests pass.
+57. Tests require no internet.
+58. Tests require no GPU.
+59. Tests require no Sparrow-V checkout.
+60. Documentation matches implementation.
+61. README status is accurate.
+62. No compiler or hardware execution is implemented.
+63. No hardware-aware pruning is implemented.
+64. Sparrow-V is not modified.
+65. General repository checks pass.
+66. Documentation checks pass.
+67. `git diff --check` passes.
+68. No commit or push occurs.
+69. `docs/codex_milestone_result.md` is finalized.
 
 ## Stop Conditions
 
 Stop for human review only if:
 
-- the Phase 1 checkpoint or preprocessing artifacts cannot be loaded;
-- calibration cannot be performed without validation/test leakage;
-- the chosen quantization scheme cannot be represented with signed INT8 weights and activations plus INT32 bias;
-- prediction semantics cannot be made correct with per-channel scales;
-- observed or theoretical accumulation exceeds signed INT32;
-- the fixture accuracy gate cannot be met without modifying the test split;
-- a major Phase 1 correctness defect is discovered.
+- the Phase 1 checkpoint or Phase 2 artifact cannot be loaded;
+- the current weight layout cannot be grouped consistently into groups of four;
+- preserving the 2:4 mask during fine-tuning requires a major training-system redesign;
+- sparse quantization cannot be represented with the existing INT8/INT32 contract;
+- compressed inference cannot reproduce dense-form sparse inference;
+- sparse quality cannot meet the acceptance gate without modifying the test split;
+- observed or theoretical sparse accumulation exceeds signed INT32;
+- a major Phase 1 or Phase 2 correctness defect is discovered.
 
-Ordinary quantization error, scale bugs, artifact issues, test failures, and documentation work are not stop conditions.
+Ordinary pruning bugs, mask bugs, packing bugs, fine-tuning instability, test failures, and documentation work are not stop conditions.
 
 ## Token-Efficiency Instructions
 
@@ -765,14 +1009,15 @@ Follow `AGENTS.md`.
 
 In particular:
 
-- read compact context and milestone first;
-- inspect only Phase 1 and quantization-relevant files;
-- do not explore future compiler or target code;
-- avoid framework-wide abstractions;
+- read compact context and current milestone first;
+- inspect only Phase 1–3 relevant files;
+- avoid exploring compiler and target directories;
+- use one deterministic pruning rule;
+- do not perform a hyperparameter sweep;
+- use bounded fine-tuning;
 - run focused tests during development;
-- run aggregate checks once;
-- reuse the existing Phase 1 checkpoint;
-- do not repeatedly retrain;
+- run aggregate validation once;
+- reuse existing artifacts where possible;
 - keep the result file concise.
 
 ## Result File
@@ -785,22 +1030,27 @@ docs/codex_milestone_result.md
 
 throughout the run.
 
-Finalize with `STATUS: COMPLETE` only if every required criterion and validation passes.
+Finalize with `STATUS: COMPLETE` only if every acceptance criterion and validation passes.
 
 Include:
 
-- quantization schemes;
-- calibration split and sample count;
-- input scale and zero point;
-- per-channel weight scales;
-- quantized bias range;
-- observed and theoretical accumulator ranges;
-- train/validation/test FP32 and INT8 fixture accuracy;
-- test prediction agreement;
+- pruning rule;
+- grouping axis;
+- tie-breaking rule;
+- retained/pruned counts;
+- metadata pattern distribution;
+- fine-tuning configuration;
+- dense INT8 accuracy;
+- sparse pre-fine-tuning accuracy;
+- sparse post-fine-tuning accuracy;
+- prediction agreement;
 - confusion matrix;
-- quantization error metrics;
-- saturation statistics;
-- artifact paths;
+- logit error metrics;
+- exact dense-form/compressed equivalence result;
+- operation accounting;
+- storage accounting;
+- accumulator ranges;
+- artifact paths and determinism evidence;
 - exact commands and outcomes;
 - changed files;
 - remaining limitations;
@@ -810,14 +1060,14 @@ Include:
 
 Use `STATUS: FAILED` if required work or checks remain incomplete.
 
-Use `STATUS: BLOCKED` only for a genuine human decision or architectural blocker.
+Use `STATUS: BLOCKED` only for a genuine architectural or human-decision blocker.
 
 ## Next Milestone
 
 The expected next milestone is:
 
 ```text
-Deterministic 2:4 structured pruning, sparse fine-tuning, and weight packing
+SparrowML intermediate representation and Sparrow-V artifact exporter
 ```
 
 Do not implement it during this milestone.
