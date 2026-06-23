@@ -1,6 +1,6 @@
 # SparrowML Context
 
-SparrowML is a local-first ML systems project that will transform models into Sparrow-V deployment artifacts and evaluate them. Phase 1 provides a deterministic synthetic sensor fixture and CPU FP32 linear baseline. Phase 2 adds deterministic INT8 PTQ with train-only calibration and explicit integer reference inference. Phase 3 adds deterministic input-axis 2:4 pruning, fixed-mask fine-tuning, legal 3-bit sparse metadata, packing, and independent sparse integer reference inference; it does not compile or execute hardware.
+SparrowML is a local-first ML systems project that transforms models into Sparrow-V deployment artifacts and will later evaluate them. Phase 1 provides a deterministic synthetic sensor fixture and CPU FP32 linear baseline. Phase 2 adds deterministic INT8 PTQ with train-only calibration and explicit integer reference inference. Phase 3 adds deterministic input-axis 2:4 pruning, fixed-mask fine-tuning, legal 3-bit sparse metadata, packing, and independent sparse integer reference inference. Phase 4 adds canonical IR and deterministic dense/sparse export packages validated against those references; it does not execute hardware.
 
 Map: `src/sparrowml/` package; `configs/` repository and target settings; `docs/` architecture and milestone state; `scripts/` deterministic checks and launcher; `tests/` offline tests; `data/` ignored datasets; `artifacts/` ignored generated outputs; `experiments/` configurations and summaries. Sparrow-V is an external target via `targets/sparrow_v/`; no RTL belongs here.
 

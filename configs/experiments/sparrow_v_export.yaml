@@ -1,0 +1,12 @@
+source_artifacts:
+  dense: artifacts/phase2_int8/quantized_model.json
+  sparse: artifacts/phase3_sparse/sparse_quantized_model.json
+target_config: configs/targets/sparrow_v.yaml
+selected_input_sample_ids: [sensor-normal-000]
+output_directory: artifacts/phase4_export
+alignment: 4
+byte_order: little-endian
+scale_serialization_type: float32
+package_format_version: sparrowml_sparrowv_package_v1
+ir_format_version: sparrowml_ir_v1
+validation_policy: exact_reference_equivalence

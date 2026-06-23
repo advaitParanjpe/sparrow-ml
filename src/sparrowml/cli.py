@@ -19,6 +19,9 @@ from .evaluation.report import write_summary
 from .training.trainer import load_and_evaluate, train_baseline
 from .quantization.pipeline import calibrate as calibrate_int8, evaluate as evaluate_int8, quantize as quantize_int8, run_baseline as run_int8_baseline
 from .sparsity.pipeline import evaluate as evaluate_sparse, finetune as finetune_sparse, pack as pack_sparse, prune as prune_sparse, run_baseline as run_sparse_baseline
+from .compiler.exporter import export_package, run_baseline as run_export_baseline, validate_package
+from .compiler.ir import parse_ir, serialize_ir
+from .compiler.lowering import lower_artifact
 
 
 def _doctor() -> int:
@@ -147,6 +150,40 @@ def _phase3(command: str, config_path: str | None) -> int:
     return 0
 
 
+def _lower_ir(mode: str, output: str | None) -> int:
+    root = load_project_config().root
+    source = root / ("artifacts/phase2_int8/quantized_model.json" if mode == "dense" else "artifacts/phase3_sparse/sparse_quantized_model.json")
+    target = root / (output or f"artifacts/phase4_export/{mode}_ir.json")
+    target.parent.mkdir(parents=True, exist_ok=True); target.write_bytes(serialize_ir(lower_artifact(source, root)))
+    print(f"IR: {target.relative_to(root)}")
+    return 0
+
+
+def _export_sparrowv(mode: str, output: str | None) -> int:
+    root = load_project_config().root; package = export_package(root, mode, root / output if output else None)
+    print(f"export: {package.relative_to(root)}")
+    return 0
+
+
+def _validate_ir(ir_file: str) -> int:
+    root = load_project_config().root
+    ir = parse_ir((root / ir_file).read_text(encoding="utf-8"))
+    print(f"IR: {ir['model_name']}; {ir['operators'][0]['op_type']}; {len(ir['tensors'])} tensors")
+    return 0
+
+
+def _validate_export(package: str) -> int:
+    root = load_project_config().root; result = validate_package(root / package)
+    print(f"export validation: {result['reference_equivalence']}")
+    return 0
+
+
+def _run_export_baseline() -> int:
+    result = run_export_baseline(load_project_config().root)
+    print(f"export baseline: dense={result['dense']['reference_equivalence']}; sparse={result['sparse']['reference_equivalence']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sparrowml")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -161,6 +198,17 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("prune-2of4", "finetune-sparse", "pack-sparse", "evaluate-sparse", "run-sparse-baseline"):
         command_parser = subparsers.add_parser(name)
         command_parser.add_argument("--config", help="repository-relative Phase 3 YAML configuration")
+    lower = subparsers.add_parser("lower-ir")
+    lower.add_argument("--mode", choices=("dense", "sparse"), required=True)
+    lower.add_argument("--output", help="IR output path relative to repository")
+    validate_ir = subparsers.add_parser("validate-ir")
+    validate_ir.add_argument("ir_file", help="IR JSON path relative to repository")
+    export = subparsers.add_parser("export-sparrowv")
+    export.add_argument("--mode", choices=("dense", "sparse"), required=True)
+    export.add_argument("--output", help="package root relative to repository")
+    validate = subparsers.add_parser("validate-export")
+    validate.add_argument("package", help="deployment package path relative to repository")
+    subparsers.add_parser("run-export-baseline")
     args = parser.parse_args(argv)
     try:
         commands = {"doctor": lambda: _doctor(), "show-config": lambda: _show_config(), "validate-contracts": lambda: _validate_contracts(),
@@ -169,7 +217,8 @@ def main(argv: list[str] | None = None) -> int:
                     "calibrate-int8": lambda: _phase2("calibrate-int8", args.config), "quantize-int8": lambda: _phase2("quantize-int8", args.config),
                     "evaluate-int8": lambda: _phase2("evaluate-int8", args.config), "run-int8-baseline": lambda: _phase2("run-int8-baseline", args.config),
                     "prune-2of4": lambda: _phase3("prune-2of4", args.config), "finetune-sparse": lambda: _phase3("finetune-sparse", args.config),
-                    "pack-sparse": lambda: _phase3("pack-sparse", args.config), "evaluate-sparse": lambda: _phase3("evaluate-sparse", args.config), "run-sparse-baseline": lambda: _phase3("run-sparse-baseline", args.config)}
+                    "pack-sparse": lambda: _phase3("pack-sparse", args.config), "evaluate-sparse": lambda: _phase3("evaluate-sparse", args.config), "run-sparse-baseline": lambda: _phase3("run-sparse-baseline", args.config),
+                    "lower-ir": lambda: _lower_ir(args.mode, args.output), "validate-ir": lambda: _validate_ir(args.ir_file), "export-sparrowv": lambda: _export_sparrowv(args.mode, args.output), "validate-export": lambda: _validate_export(args.package), "run-export-baseline": lambda: _run_export_baseline()}
         return commands[args.command]()
     except ValueError as exc:
         parser.error(str(exc))

@@ -9,3 +9,14 @@ commands:
 artifacts:
   input_dir: artifacts/deployment
   output_dir: artifacts/results
+architecture_version: sparrow_v_contract_v1
+supported_model_modes: [dense_int8, sparse_2of4_int8]
+supported_element_types: [int8, uint8, int32, float32]
+vector_width: 16
+feature_count: 16
+output_count: 4
+scratchpad_bytes: 4096
+endianness: little-endian
+alignment_bytes: 4
+command_template_version: sparrowml_symbolic_program_v1
+result_layout: int32_accumulators_class_order

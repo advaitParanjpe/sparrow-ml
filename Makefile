@@ -1,9 +1,9 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase1 test-phase2 test-phase3 milestone clean"
+	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-3 targets lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 milestone clean"
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
@@ -66,6 +66,28 @@ prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline:
 
 test-phase3:
 	$(PYTHON) -m pytest tests/test_phase3.py
+
+lower-ir:
+	$(PYTHON) -m sparrowml.cli lower-ir --mode dense
+
+validate-ir:
+	$(PYTHON) -m sparrowml.cli lower-ir --mode dense --output artifacts/phase4_export/dense_ir.json
+	$(PYTHON) -m sparrowml.cli validate-ir artifacts/phase4_export/dense_ir.json
+
+export-sparrowv-dense:
+	$(PYTHON) -m sparrowml.cli export-sparrowv --mode dense
+
+export-sparrowv-sparse:
+	$(PYTHON) -m sparrowml.cli export-sparrowv --mode sparse
+
+validate-export:
+	$(PYTHON) -m sparrowml.cli validate-export artifacts/phase4_export/dense
+
+run-export-baseline:
+	$(PYTHON) -m sparrowml.cli run-export-baseline
+
+test-phase4:
+	$(PYTHON) -m pytest tests/test_phase4.py
 
 milestone:
 	bash ./scripts/run_milestone.sh

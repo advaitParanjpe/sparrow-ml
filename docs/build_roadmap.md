@@ -6,7 +6,7 @@
 | 1 | Deterministic dataset and FP32 baseline (implemented) | Quantization/deployment | Reproducible split and baseline test |
 | 2 | Exact integer reference and INT8 quantization (implemented) | Sparsity | Integer equivalence fixtures |
 | 3 | Deterministic 2:4 pruning, fixed-mask fine-tuning, and packing (implemented) | Target execution | Packing/reference validation |
-| 4 | SparrowML IR and Sparrow-V exporter | RTL changes | Artifact contract validation |
+| 4 | SparrowML IR and Sparrow-V exporter (implemented) | RTL changes | Artifact contract validation |
 | 5 | Sparrow-V execution adapter and runtime | General benchmarking | Simulator result agreement |
 | 6 | Multi-layer model support | Broad model zoo | Layer-composition tests |
 | 7 | Experiments and target-aware optimization | Research claims | Recorded reproducible comparisons |
