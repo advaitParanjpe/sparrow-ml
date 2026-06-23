@@ -1,9 +1,9 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration train-mlp quantize-mlp evaluate-mlp-int8 export-mlp validate-mlp-export run-multilayer-baseline test-phase6
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration train-mlp quantize-mlp evaluate-mlp-int8 export-mlp validate-mlp-export run-multilayer-baseline test-phase6 prepare-sparrowv-mlp run-sparrowv-mlp validate-sparrowv-mlp run-sparrowv-mlp-baseline test-phase7 test-phase7-integration
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-5 targets sparrowv-doctor prepare-sparrowv-{dense,sparse} run-sparrowv-{dense,sparse,baseline} test-phase5 test-phase5-integration milestone clean"
+	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-7 targets sparrowv-doctor prepare-sparrowv-{dense,sparse,mlp} run-sparrowv-{dense,sparse,baseline,mlp,mlp-baseline} test-phase5 test-phase5-integration test-phase7 test-phase7-integration milestone clean"
 
 train-mlp quantize-mlp evaluate-mlp-int8 export-mlp run-multilayer-baseline:
 	$(PYTHON) -m sparrowml.cli $@
@@ -121,6 +121,18 @@ test-phase5:
 
 test-phase5-integration:
 	SPARROWML_REQUIRE_SPARROWV=1 $(PYTHON) -m pytest tests/test_phase5_integration.py
+
+prepare-sparrowv-mlp run-sparrowv-mlp run-sparrowv-mlp-baseline:
+	$(PYTHON) -m sparrowml.cli $@
+
+validate-sparrowv-mlp:
+	$(PYTHON) -m sparrowml.cli validate-sparrowv-mlp artifacts/phase6_multilayer/export artifacts/phase7_multilayer_runtime/multilayer_result.json
+
+test-phase7:
+	$(PYTHON) -m pytest tests/test_phase7.py
+
+test-phase7-integration:
+	SPARROWML_REQUIRE_SPARROWV=1 $(PYTHON) -m pytest tests/test_phase7_integration.py
 
 milestone:
 	bash ./scripts/run_milestone.sh

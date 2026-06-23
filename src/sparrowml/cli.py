@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -26,6 +27,7 @@ from .quantization.multilayer import calibrate as calibrate_mlp, evaluate as eva
 from .targets.sparrow_v.compatibility import audit
 from .targets.sparrow_v.discovery import discover
 from .targets.sparrow_v.runtime import prepare as prepare_sparrowv, run as run_sparrowv, validate_result as validate_sparrowv_result
+from .targets.sparrow_v.multilayer import prepare as prepare_sparrowv_mlp, run as run_sparrowv_mlp, semantic_view as multilayer_semantic_view, validate_result as validate_sparrowv_mlp_result
 from .targets.sparrow_v.reports import write_baseline_report
 
 
@@ -108,6 +110,45 @@ def _run_sparrowv_baseline() -> int:
         if not all(item["validation_status"] == "passed" for item in runs): raise ValueError(f"Sparrow-V {mode} validation failed")
         results[mode] = runs
     write_baseline_report(root, results); print("Sparrow-V baseline: dense and sparse passed twice"); return 0
+
+
+def _phase7_paths(package: str | None, output: str | None) -> tuple[Path, Path, int]:
+    config = load_project_config(); settings = yaml.safe_load((config.root / "configs/experiments/sparrow_v_multilayer_runtime.yaml").read_text(encoding="utf-8"))
+    return config.root / (package or settings["phase6_package"]), config.root / (output or settings["workspace_root"]), int(settings["timeout_seconds"])
+
+
+def _prepare_sparrowv_mlp(package: str | None, output: str | None) -> int:
+    source, target, _ = _phase7_paths(package, output); prepare_sparrowv_mlp(source, target)
+    print(f"prepared multi-layer Sparrow-V workspace: {target.relative_to(load_project_config().root)}"); return 0
+
+
+def _run_sparrowv_mlp(package: str | None, output: str | None) -> int:
+    config, checkout = _sparrowv_checkout(); source, target, timeout = _phase7_paths(package, output)
+    result = run_sparrowv_mlp(checkout, source, target, timeout)
+    print(f"multi-layer Sparrow-V: {result['validation_status']}")
+    return 0 if result["validation_status"] == "passed" else 1
+
+
+def _validate_sparrowv_mlp(package: str, result: str) -> int:
+    root = load_project_config().root; verdict = validate_sparrowv_mlp_result(json.loads((root / result).read_text(encoding="utf-8")), root / package)
+    print(f"multi-layer Sparrow-V result validation: {verdict['valid']}")
+    return 0 if verdict["valid"] else 1
+
+
+def _run_sparrowv_mlp_baseline() -> int:
+    config, checkout = _sparrowv_checkout(); source, target, timeout = _phase7_paths(None, None)
+    compatibility = audit(checkout)
+    if not compatibility["compatible"]: raise ValueError("Sparrow-V is incompatible: " + ", ".join(compatibility["missing_requirements"]))
+    first = run_sparrowv_mlp(checkout, source, target, timeout)
+    second = run_sparrowv_mlp(checkout, source, target, timeout)
+    if first["validation_status"] != "passed" or second["validation_status"] != "passed": raise ValueError("multi-layer Sparrow-V validation failed")
+    views = [multilayer_semantic_view(item) for item in (first, second)]
+    hashes = [hashlib.sha256(json.dumps(view, sort_keys=True, separators=(",", ":")).encode()).hexdigest() for view in views]
+    deterministic = hashes[0] == hashes[1]
+    (target / "determinism.json").write_text(json.dumps({"format_version": "sparrowml_sparrowv_multilayer_determinism_v1", "repeat_count": 2, "semantic_hashes": hashes, "deterministic": deterministic, "excluded": ["host wall-clock duration", "absolute paths", "timestamps", "logs"]}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if not deterministic: raise ValueError("multi-layer Sparrow-V semantic determinism failed")
+    (target / "summary.md").write_text("# Phase 7 multi-layer Sparrow-V runtime\n\nFour fixed 16→4 RTL fc1 partitions and one fc2 RTL run passed exact integer-reference validation twice. ReLU and requantization are host-reconstructed post-processing.\n", encoding="utf-8")
+    print("multi-layer Sparrow-V baseline: passed twice with matching semantic hashes"); return 0
 
 
 def _phase1_config(path: str | None) -> tuple[dict[str, object], Path]:
@@ -284,6 +325,10 @@ def main(argv: list[str] | None = None) -> int:
         phase5 = subparsers.add_parser(name); phase5.add_argument("--mode", choices=("dense", "sparse"), required=True); phase5.add_argument("--package"); phase5.add_argument("--output")
     phase5_validate = subparsers.add_parser("validate-sparrowv-result"); phase5_validate.add_argument("package"); phase5_validate.add_argument("result")
     subparsers.add_parser("run-sparrowv-baseline")
+    for name in ("prepare-sparrowv-mlp", "run-sparrowv-mlp"):
+        phase7 = subparsers.add_parser(name); phase7.add_argument("--package"); phase7.add_argument("--output")
+    phase7_validate = subparsers.add_parser("validate-sparrowv-mlp"); phase7_validate.add_argument("package"); phase7_validate.add_argument("result")
+    subparsers.add_parser("run-sparrowv-mlp-baseline")
     args = parser.parse_args(argv)
     try:
         commands = {"doctor": lambda: _doctor(), "show-config": lambda: _show_config(), "validate-contracts": lambda: _validate_contracts(),
@@ -296,7 +341,8 @@ def main(argv: list[str] | None = None) -> int:
                     "lower-ir": lambda: _lower_ir(args.mode, args.output), "validate-ir": lambda: _validate_ir(args.ir_file), "export-sparrowv": lambda: _export_sparrowv(args.mode, args.output), "validate-export": lambda: _validate_export(args.package), "run-export-baseline": lambda: _run_export_baseline()}
         commands.update({name: (lambda command=name: _phase6(command, getattr(args, "config", None))) for name in ("train-mlp", "quantize-mlp", "evaluate-mlp-int8", "export-mlp", "run-multilayer-baseline")})
         commands["validate-mlp-export"] = lambda: _phase6("validate-mlp-export", None, args.package)
-        commands.update({"sparrowv-doctor": _sparrowv_doctor, "prepare-sparrowv-run": lambda: _prepare_sparrowv(args.mode, args.package, args.output), "run-sparrowv": lambda: _run_sparrowv(args.mode, args.package, args.output), "validate-sparrowv-result": lambda: _validate_sparrowv(args.package, args.result), "run-sparrowv-baseline": _run_sparrowv_baseline})
+        commands.update({"sparrowv-doctor": _sparrowv_doctor, "prepare-sparrowv-run": lambda: _prepare_sparrowv(args.mode, args.package, args.output), "run-sparrowv": lambda: _run_sparrowv(args.mode, args.package, args.output), "validate-sparrowv-result": lambda: _validate_sparrowv(args.package, args.result), "run-sparrowv-baseline": _run_sparrowv_baseline,
+                         "prepare-sparrowv-mlp": lambda: _prepare_sparrowv_mlp(args.package, args.output), "run-sparrowv-mlp": lambda: _run_sparrowv_mlp(args.package, args.output), "validate-sparrowv-mlp": lambda: _validate_sparrowv_mlp(args.package, args.result), "run-sparrowv-mlp-baseline": _run_sparrowv_mlp_baseline})
         return commands[args.command]()
     except ValueError as exc:
         parser.error(str(exc))

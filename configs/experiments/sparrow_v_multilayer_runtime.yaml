@@ -1,0 +1,13 @@
+phase6_package: artifacts/phase6_multilayer/export
+target_config: configs/targets/sparrow_v.yaml
+repository_discovery: environment_then_configuration_then_sibling
+external_interface_version: sparrowv_external_sensor_workload_v1
+first_layer_partition_size: 4
+timeout_seconds: 300
+repeat_count: 2
+workspace_root: artifacts/phase7_multilayer_runtime
+required_counters: [cycles, retired_instructions, vector_loads, dense_dot_products]
+optional_counters: [vector_stores, executed_int8_multiplications]
+bias_policy: zero_bias_rtl_then_host_reconstruction
+hidden_processing_policy: host_reconstructed_relu_and_requantization
+result_schema_version: sparrowml_sparrowv_multilayer_runtime_result_v1

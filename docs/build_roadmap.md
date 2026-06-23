@@ -9,6 +9,6 @@
 | 4 | SparrowML IR and Sparrow-V exporter (implemented) | RTL changes | Artifact contract validation |
 | 5 | Sparrow-V execution adapter and runtime (implemented) | General benchmarking | Exact simulator/reference result agreement |
 | 6 | Multi-layer INT8 model and multi-operator export (implemented) | Multi-layer Sparrow-V execution, arbitrary graphs | Exact intermediate/package validation |
-| 7 | Experiments and target-aware optimization | Research claims | Recorded reproducible comparisons |
+| 7 | Multi-layer Sparrow-V RTL/reference validation (implemented) | Monolithic scheduler, hardware ReLU, sparse MLP | Exact fc1/hidden/fc2 validation and two-run semantic determinism |
 | 8 | Sparrow-V/TinyNPU comparison | Tight target coupling | Identical-workload comparison |
 | 9 | Research-style exploration after practical completion | Replacing proven path | Reproducible study protocol |
