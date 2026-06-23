@@ -1,0 +1,19 @@
+seed: 20260623
+dataset:
+  total_samples: 512
+  feature_count: 16
+  class_names: [normal, inner, outer, ball]
+  split_counts_per_class: {train: 90, validation: 19, test: 19}
+  generation_seed: 20260623
+  split_seed: 20260623
+  directory: data/processed/sensor_fixture
+preprocessing:
+  version: standardize_train_v1
+  epsilon: 1.0e-8
+training:
+  optimizer: adam
+  learning_rate: 0.01
+  epochs: 50
+  batch_size: 32
+  dataloader_seed: 20260623
+output_directory: artifacts/phase1_fp32
