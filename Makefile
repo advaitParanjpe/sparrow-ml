@@ -1,9 +1,9 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase1 test-phase2 milestone clean"
+	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase1 test-phase2 test-phase3 milestone clean"
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
@@ -60,6 +60,12 @@ run-int8-baseline:
 
 test-phase2:
 	$(PYTHON) -m pytest tests/test_phase2.py
+
+prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline:
+	$(PYTHON) -m sparrowml.cli $@
+
+test-phase3:
+	$(PYTHON) -m pytest tests/test_phase3.py
 
 milestone:
 	bash ./scripts/run_milestone.sh

@@ -1,0 +1,22 @@
+seed: 20260623
+source:
+  fp32_checkpoint: artifacts/phase1_fp32/best_fp32.pt
+  preprocessing_path: artifacts/phase1_fp32/preprocessing.json
+  fixture_directory: data/processed/sensor_fixture
+  dense_int8_artifact: artifacts/phase2_int8/quantized_model.json
+structure:
+  group_size: 4
+  nonzero_count: 2
+  grouping_axis: input_feature
+  pruning_rule: largest_absolute_magnitude
+  tie_breaking: lower_lane_index
+fine_tuning:
+  epochs: 10
+  learning_rate: 0.001
+  batch_size: 32
+acceptance_thresholds:
+  minimum_test_fixture_accuracy: 0.95
+  maximum_test_accuracy_drop: 0.05
+  minimum_test_prediction_agreement: 0.95
+output_directory: artifacts/phase3_sparse
+metadata_packing_version: sparrowml_2of4_metadata_lsb_v1
