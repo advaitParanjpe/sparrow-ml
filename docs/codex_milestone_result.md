@@ -1,24 +1,23 @@
+# Milestone result: Exact INT8 Post-Training Quantization and Integer Reference Inference
+
 STATUS: COMPLETE
-MILESTONE: Deterministic Sensor Dataset Fixture and FP32 Baseline
 
-Implemented a deterministic synthetic vibration-fault-style fixture. It has 512 samples, 16 finite features per sample, fixed class order `normal`, `inner`, `outer`, `ball`, seed `20260623`, stable IDs, and balanced per-class splits: 360 train (90/class), 76 validation (19/class), 76 test (19/class). The names are placeholders, not a real dataset claim.
+Implemented deterministic Phase 2 PTQ: train-only per-tensor symmetric INT8 input calibration (`max_abs / 127`, zero point 0), per-output-channel symmetric INT8 weights, INT32 accumulator-domain bias, and explicit signed integer affine reference inference. Rounding is NumPy `rint` (nearest, ties-to-even); values are clamped after rounding to `[-128, 127]`. Predictions use reconstructed per-channel logits, not raw accumulators.
 
-Implemented train-only standardization (`standardize_train_v1`) and a CPU FP32 `Linear(16, 4)` model with 68 parameters. Training uses Adam (learning rate 0.01, batch size 32, 50 epochs), fixed Python/NumPy/PyTorch/DataLoader seeds, and validation loss only for checkpoint selection. PyTorch deterministic algorithms are enabled; exact bitwise equivalence is limited to the tested software environment.
+Measured synthetic-fixture results:
 
-Measured reference run (`make run-fp32-baseline`): best epoch 50; checkpoint 2293 bytes; train loss 0.003876 / fixture accuracy 100%; validation loss 0.003156 / fixture accuracy 100%; test loss 0.005239 / fixture accuracy 100%. Test confusion matrix (rows true, columns predicted, class order above): `[[19, 0, 0, 0], [0, 19, 0, 0], [0, 0, 19, 0], [0, 0, 0, 19]]`. These are synthetic fixture-only measurements, not real-world accuracy claims.
+- Calibration: train split, 360 samples; input scale `0.020786371756726364`; no clipped train values (0/5760).
+- Weight scales: `[0.006949088704867626, 0.00609635931300366, 0.006888654757672408, 0.006897269271490142]`; 0 clipped values (0/64), 2 values at 127, 0 at -128.
+- Quantized bias range: `[-7702, 7926]`.
+- Observed accumulator range: `[-96519, 80747]`; conservative bound `270070`; observed and bound both fit signed INT32.
+- FP32 / INT8 fixture accuracy and agreement: train `100% / 100% / 100%`; validation `100% / 100% / 100%`; test `100% / 100% / 100%`.
+- Test confusion matrix: `[[19, 0, 0, 0], [0, 19, 0, 0], [0, 0, 19, 0], [0, 0, 0, 19]]`.
+- Test logit error: maximum absolute `0.0473749891252524`, mean absolute `0.012607279240496778`, RMS `0.015673325599854963`.
 
-Generated ignored artifacts in `artifacts/phase1_fp32/`: `config_snapshot.yaml`, `dataset_metadata.json`, `preprocessing.json`, `best_fp32.pt`, `metrics.json`, `confusion_matrix.json`, and `summary.md`. The fixture files are generated in `data/processed/sensor_fixture/`.
+Generated ignored artifacts: `artifacts/phase2_int8/config_snapshot.yaml`, `calibration_report.json`, `quantized_model.json`, `integer_evaluation_metrics.json`, `error_statistics.json`, `confusion_matrix.json`, `prediction_agreement.json`, and `summary.md`. A repeated `make run-int8-baseline` produced the same SHA-256 for `quantized_model.json`.
 
-Validation passed:
-- `python3 -m compileall src scripts`
-- `pytest` (14 passed)
-- `make test-phase1` (6 passed)
-- `make smoke`
-- `make check`
-- `make docs-check`
-- `git diff --check`
-- `make run-fp32-baseline`
+Validation passed: `python3 -m compileall src scripts`; `pytest` (19 passed); `make test-phase1` (6 passed); `make test-phase2` (5 passed); `make smoke`; `make check`; `make docs-check`; `git diff --check`; and `make run-int8-baseline`.
 
-Changed implementation/configuration: Phase 1 fixture, preprocessing, model, training, metrics/reporting, CLI, Make targets, dependency declarations, focused tests, and `configs/experiments/fp32_sensor_baseline.yaml`. Updated README and Phase 1 architecture, roadmap, data, experiment-policy, context, and results documentation.
+Changed implementation includes `src/sparrowml/quantization/`, Phase 2 CLI commands, Make targets, configuration, focused tests, and Phase 2 documentation. Existing unrelated worktree edits in `.gitignore` and `scripts/check_repo.py` were preserved. No Sparrow-V files were modified. No commit or push occurred.
 
-Remaining limitations: no quantization, pruning, compiler lowering, Sparrow-V execution, hardware metrics, or real-world dataset evaluation. The next recommended milestone is exact integer reference inference and INT8 post-training quantization. Sparrow-V was not modified. No commit or push occurred.
+Limitations: results are only synthetic-fixture measurements; no pruning, sparse packing, compiler lowering, Sparrow-V execution, QAT, or hardware measurement is implemented. Next recommended milestone: deterministic 2:4 structured pruning, sparse fine-tuning, and weight packing.

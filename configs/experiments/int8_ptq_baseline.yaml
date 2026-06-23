@@ -1,0 +1,18 @@
+seed: 20260623
+source:
+  fixture_directory: data/processed/sensor_fixture
+  checkpoint_path: artifacts/phase1_fp32/best_fp32.pt
+  preprocessing_path: artifacts/phase1_fp32/preprocessing.json
+input_quantization:
+  scheme: per_tensor_symmetric_int8
+  calibration_policy: max_abs_div_127
+  clipping_policy: clamp_signed_int8
+weight_quantization:
+  scheme: per_output_channel_symmetric_int8
+  axis: 0
+accumulator_type: signed_int32
+acceptance_thresholds:
+  minimum_test_fixture_accuracy: 0.95
+  maximum_test_accuracy_drop: 0.02
+  minimum_test_prediction_agreement: 0.98
+output_directory: artifacts/phase2_int8

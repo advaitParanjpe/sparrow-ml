@@ -17,6 +17,7 @@ from .targets.sparrow_v.contracts import SparrowVResult
 from .data.fixture import generate_fixture, load_fixture, write_fixture
 from .evaluation.report import write_summary
 from .training.trainer import load_and_evaluate, train_baseline
+from .quantization.pipeline import calibrate as calibrate_int8, evaluate as evaluate_int8, quantize as quantize_int8, run_baseline as run_int8_baseline
 
 
 def _doctor() -> int:
@@ -123,6 +124,17 @@ def _run_fp32_baseline(config_path: str | None) -> int:
     return _evaluate_fp32(config_path)
 
 
+def _phase2(command: str, config_path: str | None) -> int:
+    commands = {"calibrate-int8": calibrate_int8, "quantize-int8": quantize_int8, "evaluate-int8": evaluate_int8, "run-int8-baseline": run_int8_baseline}
+    result = commands[command](config_path)
+    if command == "run-int8-baseline":
+        test = result["evaluations"]["test"]
+        print(f"INT8 baseline: test fixture accuracy {test['int8_fixture_accuracy']:.4%}; agreement {test['prediction_agreement']:.4%}")
+    else:
+        print(f"{command}: complete")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sparrowml")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -131,11 +143,16 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("generate-fixture", "train-fp32", "evaluate-fp32", "run-fp32-baseline"):
         command_parser = subparsers.add_parser(name)
         command_parser.add_argument("--config", help="repository-relative Phase 1 YAML configuration")
+    for name in ("calibrate-int8", "quantize-int8", "evaluate-int8", "run-int8-baseline"):
+        command_parser = subparsers.add_parser(name)
+        command_parser.add_argument("--config", help="repository-relative Phase 2 YAML configuration")
     args = parser.parse_args(argv)
     try:
         commands = {"doctor": lambda: _doctor(), "show-config": lambda: _show_config(), "validate-contracts": lambda: _validate_contracts(),
                     "generate-fixture": lambda: _generate_fixture(args.config), "train-fp32": lambda: _train_fp32(args.config),
-                    "evaluate-fp32": lambda: _evaluate_fp32(args.config), "run-fp32-baseline": lambda: _run_fp32_baseline(args.config)}
+                    "evaluate-fp32": lambda: _evaluate_fp32(args.config), "run-fp32-baseline": lambda: _run_fp32_baseline(args.config),
+                    "calibrate-int8": lambda: _phase2("calibrate-int8", args.config), "quantize-int8": lambda: _phase2("quantize-int8", args.config),
+                    "evaluate-int8": lambda: _phase2("evaluate-int8", args.config), "run-int8-baseline": lambda: _phase2("run-int8-baseline", args.config)}
         return commands[args.command]()
     except ValueError as exc:
         parser.error(str(exc))

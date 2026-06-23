@@ -1,9 +1,9 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 milestone clean"
+	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase1 test-phase2 milestone clean"
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
@@ -45,6 +45,21 @@ run-fp32-baseline:
 
 test-phase1:
 	$(PYTHON) -m pytest tests/test_phase1.py
+
+calibrate-int8:
+	$(PYTHON) -m sparrowml.cli calibrate-int8
+
+quantize-int8:
+	$(PYTHON) -m sparrowml.cli quantize-int8
+
+evaluate-int8:
+	$(PYTHON) -m sparrowml.cli evaluate-int8
+
+run-int8-baseline:
+	$(PYTHON) -m sparrowml.cli run-int8-baseline
+
+test-phase2:
+	$(PYTHON) -m pytest tests/test_phase2.py
 
 milestone:
 	bash ./scripts/run_milestone.sh
