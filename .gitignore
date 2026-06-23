@@ -25,6 +25,7 @@ data/processed/*
 !data/processed/.gitkeep
 artifacts/*
 !artifacts/README.md
+data/processed/sensor_fixture/
 checkpoints/
 *.ckpt
 *.pt
