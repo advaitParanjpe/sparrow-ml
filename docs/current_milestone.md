@@ -1,102 +1,118 @@
-# Milestone: Multi-Layer INT8 Model, Intermediate Activation Quantization, and Multi-Operator Compilation
+# Milestone: Multi-Layer Sparrow-V Runtime Execution and Intermediate RTL/Reference Validation
 
 ## Objective
 
-Extend SparrowML from the current single-layer `Linear(16, 4)` pipeline to a deterministic two-layer INT8 model with explicit intermediate activation quantization and multi-operator compilation.
-
-Implement this model:
-
-```text
-Input[16]
-→ Linear(16, 16)
-→ ReLU
-→ Linear(16, 4)
-→ Output[4]
-```
+Execute the Phase 6 dense `16→16→4` INT8 model through the existing Sparrow-V runtime and RTL simulation path, then validate all intermediate and final values against SparrowML’s multi-layer integer reference.
 
 This milestone must:
 
-1. train a deterministic FP32 two-layer MLP;
-2. calibrate and quantize the input and intermediate activation tensors;
-3. quantize both linear layers to signed INT8 weights with INT32 biases;
-4. implement explicit multi-layer integer reference inference;
-5. implement integer-domain ReLU and requantization between layers;
-6. extend the SparrowML IR to represent multiple operators and intermediate tensors;
-7. allocate deterministic intermediate memory buffers;
-8. export dense Sparrow-V deployment packages for the two-layer graph;
-9. validate exported artifacts against the multi-layer integer reference;
-10. preserve all Phase 1–5 workflows and results.
+1. extend the existing SparrowML Sparrow-V runtime adapter to accept the Phase 6 multi-layer deployment package;
+2. use Sparrow-V’s documented external workload interface without modifying Sparrow-V RTL or ISA;
+3. execute the first linear layer through Sparrow-V’s dense vector path;
+4. validate first-layer accumulators exactly;
+5. perform and record ReLU and hidden requantization with clear provenance;
+6. execute the second linear layer through Sparrow-V’s dense vector path;
+7. validate second-layer accumulators exactly;
+8. validate hidden INT8 activations, reconstructed logits, and final prediction;
+9. collect measured and derived counters for both layers;
+10. emit a deterministic multi-layer runtime result and comparison report;
+11. preserve all Phase 1–6 workflows and tests.
 
-This milestone is about **multi-layer model semantics, intermediate quantization, and multi-operator compilation**.
+This milestone is about **real multi-stage Sparrow-V RTL execution and intermediate correctness validation**.
 
-Do not implement Sparrow-V simulation of the multi-layer model yet unless an existing stable Sparrow-V interface already supports the complete sequence without modifying Sparrow-V. Real multi-layer RTL execution belongs in the following milestone.
+Do not modify Sparrow-V RTL, add new instructions, implement sparse MLP execution, or begin real-dataset evaluation.
 
 ## Current Baseline
 
-Completed functionality includes:
+Phase 6 provides:
 
-### Phase 1
-
-- deterministic 512-sample synthetic sensor fixture;
-- 16 input features;
-- four output classes;
-- train-only standardization;
-- deterministic FP32 `Linear(16, 4)` training.
-
-### Phase 2
-
-- signed symmetric INT8 inputs;
-- per-output-channel signed INT8 weights;
-- INT32 biases;
-- exact single-layer integer reference inference.
-
-### Phase 3
-
-- deterministic 2:4 structured pruning;
-- compressed sparse weights;
-- packed sparse metadata;
-- exact compressed sparse integer inference.
-
-### Phase 4
-
-- versioned SparrowML IR;
-- dense and sparse single-operator lowering;
-- deterministic memory maps and deployment packages;
-- package reload validation.
-
-### Phase 5
-
-- Sparrow-V external runtime adapter;
-- real dense and sparse RTL simulation;
-- exact reference matching;
-- architectural counter reporting;
-- no Sparrow-V source or RTL modification.
-
-All existing functionality must remain passing.
-
-## Supported Model
-
-Implement exactly:
+- deterministic FP32 model:
 
 ```text
-Linear(16, 16)
+Linear(16,16)
 ReLU
-Linear(16, 4)
+Linear(16,4)
 ```
 
-Use:
+- 340 parameters;
+- deterministic training;
+- FP32 fixture accuracy of 100%;
+- input INT8 calibration;
+- hidden ReLU activation calibration;
+- signed INT8 weights for both layers;
+- INT32 biases;
+- explicit two-layer integer reference inference;
+- deterministic intermediate traces;
+- IR operator sequence:
 
-- 16 input features;
-- 16 hidden features;
-- four output classes;
-- FP32 training;
-- INT8 inputs;
-- INT8 hidden activations;
-- INT8 weights;
-- INT32 biases and accumulators;
-- deterministic CPU execution.
+```text
+DenseLinearInt8
+ReLU
+RequantizeInt8
+DenseLinearInt8
+```
 
-Do not generalize to arbitrary-depth networks.
+- deterministic 528-byte deployment package;
+- explicit 16-byte hidden activation buffer;
+- exact package reload validation;
+- no Sparrow-V execution yet.
+
+Phase 5 provides:
+
+- Sparrow-V checkout discovery;
+- versioned external workload interface;
+- real dense and sparse single-layer RTL simulation;
+- exact accumulator and prediction matching;
+- measured and derived counter handling;
+- semantic determinism checks;
+- no Sparrow-V source or RTL modification.
+
+## Supported Scope
+
+Support exactly one dense multi-layer graph:
+
+```text
+Input[16, INT8]
+→ DenseLinearInt8[16→16]
+→ ReLU
+→ RequantizeInt8[hidden scale]
+→ DenseLinearInt8[16→4]
+→ Output[4]
+```
+
+Do not generalize to arbitrary graphs or layer counts.
+
+Do not implement sparse multi-layer execution.
+
+## Repository Boundary
+
+SparrowML owns:
+
+- Phase 6 package loading;
+- layer sequencing;
+- runtime workspace generation;
+- Sparrow-V command invocation;
+- result parsing;
+- intermediate reference comparison;
+- host/runtime post-processing;
+- final reporting.
+
+Sparrow-V owns:
+
+- RTL;
+- vector instruction semantics;
+- simulator;
+- external workload interface;
+- architectural counters.
+
+This milestone must not:
+
+- modify Sparrow-V RTL;
+- modify Sparrow-V ISA;
+- overwrite Sparrow-V tracked files;
+- commit inside Sparrow-V;
+- copy Sparrow-V source into SparrowML;
+- claim physical hardware execution.
 
 ## Relevant Files
 
@@ -108,817 +124,622 @@ Read first:
 - `docs/architecture.md`
 - `docs/data_contracts.md`
 - `docs/experiment_policy.md`
-- `docs/results/phase1_fp32_baseline.md`
-- `docs/results/phase2_int8_ptq.md`
-- `docs/results/phase4_sparrow_v_export.md`
+- `docs/multilayer_quantization_contract.md`
+- `docs/sparrow_v_runtime_contract.md`
 - `docs/results/phase5_sparrow_v_runtime.md`
-- current model, training, quantization, compiler, IR, export, and evaluation modules.
+- `docs/results/phase6_multilayer_int8.md`
+- Phase 5 Sparrow-V adapter modules;
+- Phase 6 package, IR, trace, and export modules;
+- `configs/experiments/sparrow_v_runtime.yaml`
+- `configs/experiments/multilayer_int8_baseline.yaml`
+- `configs/targets/sparrow_v.yaml`
 
-Inspect only the directly relevant implementation after that.
+Inspect only the minimum Sparrow-V files needed to use the existing external workload interface.
 
-Do not broadly inspect Sparrow-V or modify it.
+Do not broadly inspect Sparrow-V RTL, synthesis, FPGA, or ASIC files.
 
-## FP32 Model
+## Execution Strategy
 
-Implement a minimal PyTorch model equivalent to:
+Use the existing Sparrow-V external fixed-shape workload interface twice:
 
-```python
-torch.nn.Sequential(
-    torch.nn.Linear(16, 16),
-    torch.nn.ReLU(),
-    torch.nn.Linear(16, 4),
-)
-```
+### Stage 1
 
-Requirements:
-
-- deterministic initialization;
-- explicit layer names;
-- no dropout;
-- no batch normalization;
-- no hidden operations;
-- CPU support;
-- inspectable forward pass.
-
-Suggested names:
+Execute:
 
 ```text
-fc1
-relu
-fc2
+input_int8[16]
+× fc1_weight_int8[16,16]
++ fc1_bias
+→ fc1_acc_int32[16]
 ```
 
-Report:
+### Intermediate processing
 
-- total parameter count;
-- per-layer parameter count;
-- checkpoint size.
-
-## Training
-
-Train on the existing deterministic fixture and splits.
-
-Requirements:
-
-- same fixture provenance;
-- same train/validation/test separation;
-- fixed Python, NumPy, PyTorch, and DataLoader seeds;
-- cross-entropy loss;
-- Adam or SGD;
-- validation-based checkpoint selection;
-- no test-based tuning;
-- bounded epoch count;
-- CPU-only default.
-
-Recommended defaults:
+Apply:
 
 ```text
-epochs: 50
-batch_size: 32
-learning_rate: 0.005
-seed: 20260623
+fc1_acc_int32
+→ reconstructed hidden pre-ReLU values
+→ ReLU
+→ hidden requantization
+→ hidden_int8[16]
 ```
 
-Adjust only if necessary for stable convergence.
+### Stage 2
 
-Do not perform a hyperparameter sweep.
-
-## FP32 Quality Gate
-
-Required:
-
-- test fixture accuracy at least 95%;
-- validation and test metrics reported;
-- confusion matrix reported;
-- training remains deterministic within documented software limits.
-
-Results must remain labelled as synthetic fixture accuracy.
-
-## Quantization Domains
-
-Represent these distinct quantization domains:
-
-1. standardized model input;
-2. first-layer weights;
-3. first-layer INT32 accumulators;
-4. post-ReLU hidden real values;
-5. hidden INT8 activations;
-6. second-layer weights;
-7. second-layer INT32 accumulators;
-8. reconstructed final logits.
-
-Do not treat all tensors as though they share one scale.
-
-## Input Quantization
-
-Reuse the Phase 2 input quantization contract where sound:
+Execute:
 
 ```text
-signed INT8
-per-tensor symmetric
-zero_point = 0
-scale = max_abs(training inputs) / 127
+hidden_int8[16]
+× fc2_weight_int8[4,16]
++ fc2_bias
+→ fc2_acc_int32[4]
 ```
 
-Calibration must use training data only.
+The adapter may invoke Sparrow-V once per layer if the existing external workload interface supports only one `16→N` operation at a time.
 
-## Weight Quantization
+Do not require a single monolithic RTL simulation if two documented isolated runs are simpler and preserve correctness.
 
-For both `fc1` and `fc2`, use:
+## Layer 1 Execution
+
+Prepare an external Sparrow-V workload containing:
+
+- Phase 6 input INT8 sample;
+- `fc1` INT8 weights with shape `[16,16]`;
+- `fc1` INT32 biases or a documented zero-bias execution plus reconstruction path;
+- 16 expected first-layer accumulators;
+- source package identity;
+- layer identifier `fc1`.
+
+The existing Sparrow-V external interface may currently be fixed to four outputs. Before implementation, inspect whether it can accept 16 outputs without RTL changes.
+
+If the interface supports only four outputs, use four deterministic `16→4` executions covering output channels:
 
 ```text
-signed INT8
-per-output-channel symmetric
-zero_point = 0
+fc1 outputs 0–3
+fc1 outputs 4–7
+fc1 outputs 8–11
+fc1 outputs 12–15
 ```
 
-For `fc1`:
+Then concatenate the results in canonical output-channel order.
+
+This partitioning is acceptable only if:
+
+- each run uses the same 16-element input;
+- each weight slice is exact;
+- bias handling is exact and documented;
+- all 16 accumulators reproduce the Phase 6 reference;
+- counters are aggregated carefully;
+- the partitioning does not alter arithmetic semantics.
+
+Prefer reuse of the existing stable `16→4` interface over modifying Sparrow-V.
+
+## Layer 2 Execution
+
+Prepare one external Sparrow-V workload containing:
+
+- validated hidden INT8 vector;
+- `fc2` INT8 weights `[4,16]`;
+- `fc2` INT32 biases or documented reconstruction path;
+- four expected final accumulators;
+- source package identity;
+- layer identifier `fc2`.
+
+Require exact match with the Phase 6 integer reference.
+
+## Bias Provenance
+
+The existing Sparrow-V workload template may only materialize signed 12-bit biases.
+
+Handle each layer explicitly.
+
+Permitted approach:
+
+1. execute the RTL workload with zero bias or representable bias;
+2. parse the RTL-produced dot-product accumulators;
+3. add the full Phase 6 INT32 bias in runtime or host reconstruction;
+4. record both pre-bias and post-bias values;
+5. clearly label value provenance.
+
+For every accumulator field, record one of:
 
 ```text
-weight shape = [16, 16]
-16 output-channel scales
+rtl_produced
+runtime_software_produced
+host_reconstructed
 ```
+
+Do not describe host-reconstructed values as entirely RTL-produced.
+
+If a full bias fits the current Sparrow-V runtime interface, use it directly and record that fact.
+
+## Intermediate ReLU and Requantization Provenance
+
+The existing Sparrow-V interface may not directly perform the exact Phase 6 per-channel reconstruction, ReLU, and hidden requantization.
+
+The adapter may perform this step in SparrowML using the Phase 6 contract.
+
+It must record:
+
+- source first-layer accumulators;
+- input scale;
+- 16 `fc1` weight scales;
+- reconstructed pre-ReLU values;
+- ReLU outputs;
+- hidden scale;
+- rounding mode;
+- clamping range;
+- resulting hidden INT8 codes;
+- provenance as host/runtime post-processing.
+
+Require exact equality with the Phase 6 `intermediate_reference.json`.
+
+Do not claim ReLU or requantization was executed in RTL unless it actually was.
+
+## Exact Correctness Gates
+
+Require exact integer equality for:
+
+- all 16 post-bias first-layer accumulators;
+- all 16 hidden INT8 activation codes;
+- all four post-bias second-layer accumulators;
+- final predicted class.
+
+Floating-point reconstructed values may use a documented small tolerance because scales are serialized as float32.
+
+Any one-integer mismatch must fail the milestone.
+
+## Runtime Result Schema
+
+Extend or version the existing result contract.
+
+Preferred version:
+
+```text
+sparrowml_sparrowv_multilayer_runtime_result_v1
+```
+
+Record:
+
+- package format and hash;
+- Sparrow-V commit identity;
+- sample ID;
+- graph identifier;
+- layer execution order;
+- per-run commands;
+- per-run exit status;
+- first-layer execution partitions;
+- first-layer raw RTL accumulators;
+- first-layer reconstructed bias-adjusted accumulators;
+- expected first-layer accumulators;
+- exact match status;
+- reconstructed pre-ReLU values;
+- ReLU values;
+- hidden INT8 activations;
+- expected hidden INT8 activations;
+- hidden exact match status;
+- second-layer raw RTL accumulators;
+- second-layer bias-adjusted accumulators;
+- expected second-layer accumulators;
+- final reconstructed logits;
+- final prediction;
+- expected prediction;
+- counter summaries;
+- provenance labels;
+- semantic determinism;
+- overall validation status.
+
+Canonical semantic results must not contain absolute paths or wall-clock timestamps.
+
+## Runtime Workspace
+
+Use an isolated generated directory such as:
+
+```text
+artifacts/phase7_multilayer_runtime/
+```
+
+Recommended structure:
+
+```text
+artifacts/phase7_multilayer_runtime/
+├── compatibility.json
+├── fc1/
+│   ├── partition_0/
+│   ├── partition_1/
+│   ├── partition_2/
+│   └── partition_3/
+├── intermediate/
+│   └── hidden_trace.json
+├── fc2/
+│   └── result.json
+├── multilayer_result.json
+├── counter_report.json
+├── determinism.json
+└── summary.md
+```
+
+If Sparrow-V supports 16 outputs directly, use one `fc1` workspace instead of four partitions.
+
+Generated artifacts must remain ignored.
+
+## Counters
+
+Collect only counters exposed by Sparrow-V.
+
+For each layer or partition record:
+
+- cycles;
+- retired instructions;
+- vector loads;
+- vector stores;
+- dense dot-product instructions;
+- executed multiplications;
+- traps or assertion failures.
+
+Clearly distinguish:
+
+- measured counters;
+- derived counters;
+- unavailable counters.
+
+For a four-part first layer using four-output workloads:
+
+- each partition performs four output dot products;
+- total `fc1` dot products should be 16;
+- total conceptual multiplications should be 256;
+- total counters should be aggregated from the four measured runs.
 
 For `fc2`:
 
-```text
-weight shape = [4, 16]
-4 output-channel scales
-```
+- four output dot products;
+- 64 conceptual multiplications.
 
-Use deterministic rounding and clamping consistent with Phase 2.
-
-## Bias Quantization
-
-For each linear layer:
+Total model arithmetic:
 
 ```text
-bias_scale[channel] =
-    activation_input_scale × weight_scale[channel]
+320 dense INT8 multiplications
 ```
 
-Quantize bias to signed INT32:
+Do not hardcode measured cycle or instruction totals.
+
+## Counter Aggregation
+
+If multiple simulations are required for `fc1`, report:
+
+- per-partition counters;
+- aggregate measured counters;
+- number of simulator invocations;
+- limits of comparing this partitioned execution against a future monolithic runtime.
+
+Do not present summed simulation startup or control overhead as intrinsic model latency without qualification.
+
+If cycle values are summed, label them:
 
 ```text
-bias_int32[channel] =
-    round(bias_fp32[channel] / bias_scale[channel])
+partitioned simulation cycle total
 ```
 
-For `fc1`, the activation input scale is the model input scale.
+not necessarily end-to-end optimized hardware latency.
 
-For `fc2`, the activation input scale is the hidden activation scale.
+## Semantic Determinism
 
-Validate all biases against signed INT32.
+Run the complete multi-layer workflow at least twice.
 
-## First-Layer Integer Inference
+Require identical:
 
-Compute:
+- first-layer accumulators;
+- hidden INT8 activations;
+- second-layer accumulators;
+- final prediction;
+- parsed architectural counters, where deterministic;
+- package identities;
+- validation statuses.
 
-```text
-acc1[j] =
-    bias1_int32[j]
-    + Σ input_int8[i] × weight1_int8[j, i]
-```
+Exclude from semantic hashes:
 
-Requirements:
+- host wall-clock duration;
+- temporary paths;
+- timestamps;
+- incidental simulator logs.
 
-- explicit signed integer arithmetic;
-- no `torch.nn.Linear` in integer inference;
-- accumulator range validation;
-- reconstruction using per-channel scales.
+## Compatibility Audit
 
-The reconstructed first-layer value for channel `j` is:
+Before implementation, update compatibility evidence to record:
 
-```text
-hidden_pre_relu_real[j] =
-    acc1[j] × input_scale × weight1_scale[j]
-```
+- external interface version;
+- supported input size;
+- supported output count;
+- whether 16-output execution is directly supported;
+- whether partitioning is required;
+- bias-width limitation;
+- simulator tools;
+- commands used;
+- counter availability;
+- Sparrow-V commit.
 
-## ReLU
-
-Apply exact ReLU in the reconstructed activation domain:
-
-```text
-hidden_relu_real[j] = max(0, hidden_pre_relu_real[j])
-```
-
-Also define an equivalent integer-aware implementation where possible.
-
-Document clearly whether ReLU occurs:
-
-- before requantization in reconstructed real values; or
-- through an equivalent integer threshold.
-
-Do not introduce approximation beyond the documented quantization step.
-
-## Hidden Activation Calibration
-
-Calibrate the hidden activation tensor using training samples only.
-
-Preferred:
-
-```text
-per-tensor asymmetric or symmetric INT8
-```
-
-Because ReLU produces nonnegative values, preferred initial representation is:
-
-```text
-uint8, range [0, 255]
-```
-
-However, Sparrow-V’s existing vector datapath is signed INT8-oriented. Therefore, for deployment compatibility, prefer:
-
-```text
-signed INT8, range [0, 127]
-zero_point = 0
-scale = max(training hidden ReLU activation) / 127
-```
-
-Use only nonnegative codes.
-
-Report:
-
-- hidden calibration split;
-- sample count;
-- minimum;
-- maximum;
-- maximum absolute value;
-- selected scale;
-- zero point;
-- clipped values;
-- clipping percentage.
-
-Do not use validation or test data for hidden calibration.
-
-## Hidden Requantization
-
-Quantize hidden ReLU activations:
-
-```text
-hidden_int8 =
-    clamp(round(hidden_relu_real / hidden_scale), 0, 127)
-```
-
-Although stored in signed INT8, valid hidden values must remain in:
-
-```text
-[0, 127]
-```
-
-Requirements:
-
-- deterministic rounding;
-- explicit clamping;
-- saturation reporting;
-- no negative post-ReLU codes;
-- finite values only.
-
-## Second-Layer Integer Inference
-
-Compute:
-
-```text
-acc2[k] =
-    bias2_int32[k]
-    + Σ hidden_int8[j] × weight2_int8[k, j]
-```
-
-Reconstruct final logits:
-
-```text
-logit[k] =
-    acc2[k] × hidden_scale × weight2_scale[k]
-```
-
-Prediction must use reconstructed per-channel logits, not raw accumulators where output scales differ.
-
-## Integer Reference Outputs
-
-For every evaluated sample, retain:
-
-- input INT8 vector;
-- `fc1` INT32 accumulators;
-- reconstructed pre-ReLU values;
-- post-ReLU values;
-- hidden INT8 vector;
-- `fc2` INT32 accumulators;
-- reconstructed final logits;
-- predicted class;
-- expected label.
-
-This trace is required for compiler/export validation.
-
-## Quantization Evaluation
-
-Compare:
-
-1. FP32 MLP;
-2. INT8 multi-layer reference.
-
-Report per split:
-
-- FP32 fixture accuracy;
-- INT8 fixture accuracy;
-- prediction agreement;
-- disagreement count;
-- confusion matrix;
-- final logit maximum absolute error;
-- mean absolute error;
-- RMS error;
-- hidden activation clipping;
-- accumulator ranges for both layers.
-
-## Quality Gates
-
-Required:
-
-- INT8 test fixture accuracy at least 95%;
-- INT8 test accuracy drop versus FP32 no more than 3 percentage points;
-- FP32/INT8 prediction agreement at least 95%;
-- all first-layer accumulators fit signed INT32;
-- all second-layer accumulators fit signed INT32;
-- hidden INT8 activations remain in `[0, 127]`;
-- no NaN or infinity;
-- deterministic artifacts.
-
-Do not alter the test fixture to satisfy the gate.
-
-## Compiler IR Extension
-
-Extend the existing IR rather than creating a separate incompatible format.
-
-The IR must support this operator sequence:
-
-```text
-DenseLinearInt8
-ReLU
-RequantizeInt8
-DenseLinearInt8
-```
-
-A fused representation is permitted only if the unfused logical operations remain explicit in the IR or manifest.
-
-Add explicit intermediate tensors:
-
-```text
-input_int8             [16]
-fc1_acc_int32          [16]
-hidden_relu_real       [16] or logical-only
-hidden_int8            [16]
-fc2_acc_int32          [4]
-output_logits          [4]
-```
-
-Do not require physical storage for logical-only tensors if clearly documented.
-
-## New Operator Support
-
-Add narrowly scoped operators:
-
-```text
-ReLU
-RequantizeInt8
-```
-
-Operator fields must explicitly record:
-
-### ReLU
-
-- input tensor;
-- output tensor;
-- threshold semantics;
-- element count.
-
-### RequantizeInt8
-
-- input accumulator or reconstructed tensor;
-- output tensor;
-- input scales;
-- output scale;
-- output zero point;
-- rounding;
-- clamp minimum;
-- clamp maximum.
-
-Do not add arbitrary activation or quantization operators.
-
-## Multi-Operator Validation
-
-Validate:
-
-- operator order;
-- tensor producer/consumer relationships;
-- no missing tensors;
-- no duplicate tensor producers;
-- compatible shapes;
-- valid quantization domains;
-- valid hidden activation range;
-- final output count of four;
-- static graph only;
-- no cycles in the operator graph.
-
-## Memory Layout
-
-Extend the layout planner to allocate:
-
-- input;
-- `fc1` weights;
-- `fc1` bias;
-- `fc1` scales;
-- hidden activation buffer;
-- `fc2` weights;
-- `fc2` bias;
-- `fc2` scales;
-- final output.
-
-Requirements:
-
-- deterministic order;
-- four-byte alignment unless target contract requires otherwise;
-- no overlap;
-- hidden buffer explicitly represented;
-- scratchpad capacity checked;
-- total package size reported.
-
-Use buffer reuse only if simple and clearly validated.
-
-Do not implement a general lifetime allocator.
-
-## Deployment Package
-
-Generate a Phase 6 dense multi-layer package under:
-
-```text
-artifacts/phase6_multilayer/export/
-```
-
-Include:
-
-```text
-manifest.json
-model_ir.json
-memory_map.json
-model_data.bin
-input_data.bin
-input.json
-expected_output.json
-intermediate_reference.json
-program.json
-export_report.json
-README.md
-```
-
-The package must be self-contained and deterministic.
-
-## Program Representation
-
-Generate a symbolic multi-command program:
-
-```text
-load input
-load fc1 weights/bias/scales
-execute 16 dense dot products
-apply ReLU
-requantize hidden activations
-load fc2 weights/bias/scales
-execute four dense dot products
-store final outputs
-```
-
-Do not invent raw Sparrow-V opcodes.
-
-The symbolic representation must clearly distinguish operations expected to run:
-
-- in vector hardware;
-- in scalar runtime software;
-- on the host in a future adapter.
-
-No actual Sparrow-V execution is required in this milestone.
-
-## Export Validation
-
-Reload the exported package and verify:
-
-- all binaries decode;
-- tensors match source artifacts;
-- graph order is valid;
-- memory regions do not overlap;
-- hidden buffer size is correct;
-- integer reference reproduced from decoded package contents;
-- both layer accumulators match exactly;
-- hidden INT8 activation matches exactly;
-- final prediction matches;
-- repeated export is byte-for-byte deterministic.
+Do not change Sparrow-V automatically if the four-output partitioning path is sufficient.
 
 ## Configuration
 
 Add:
 
 ```text
-configs/experiments/multilayer_int8_baseline.yaml
+configs/experiments/sparrow_v_multilayer_runtime.yaml
 ```
 
 Include:
 
-- model dimensions;
-- seed;
-- training settings;
-- calibration policies;
-- input quantization;
-- hidden quantization;
-- weight quantization;
-- acceptance gates;
-- output directories;
-- IR version;
-- package version;
-- alignment;
-- target configuration.
+- Phase 6 package path;
+- Sparrow-V discovery policy;
+- target configuration;
+- external interface version;
+- first-layer partition size;
+- timeout;
+- repeat count;
+- workspace root;
+- required counters;
+- optional counters;
+- bias policy;
+- hidden processing policy;
+- result schema version.
 
-Avoid absolute paths.
+Avoid machine-specific absolute paths.
 
 ## CLI
 
 Add bounded commands such as:
 
 ```text
-sparrowml train-mlp
-sparrowml quantize-mlp
-sparrowml evaluate-mlp-int8
-sparrowml export-mlp
-sparrowml validate-mlp-export
-sparrowml run-multilayer-baseline
+sparrowml prepare-sparrowv-mlp
+sparrowml run-sparrowv-mlp
+sparrowml validate-sparrowv-mlp
+sparrowml run-sparrowv-mlp-baseline
 ```
 
-Exact names may follow existing conventions.
+Exact names may follow current conventions.
 
-### `train-mlp`
+### `prepare-sparrowv-mlp`
 
-- train deterministic FP32 model;
-- save best validation checkpoint;
-- write metrics.
+- load and validate Phase 6 package;
+- create layer workspaces;
+- emit layer manifests;
+- do not run simulation.
 
-### `quantize-mlp`
+### `run-sparrowv-mlp`
 
-- calibrate input and hidden activations using training data;
-- quantize both layers;
-- emit multi-layer quantized artifact.
+- execute all required `fc1` partitions;
+- reconstruct and validate hidden activations;
+- execute `fc2`;
+- produce result schema.
 
-### `evaluate-mlp-int8`
+### `validate-sparrowv-mlp`
 
-- run explicit multi-layer integer reference;
-- compare against FP32.
+- reload saved runtime evidence;
+- verify package identity;
+- revalidate all intermediate and final values.
 
-### `export-mlp`
+### `run-sparrowv-mlp-baseline`
 
-- lower to multi-operator IR;
-- create deployment package.
-
-### `validate-mlp-export`
-
-- reload and reproduce intermediate and final reference values.
-
-### `run-multilayer-baseline`
-
-- train;
-- calibrate;
-- quantize;
-- evaluate;
-- export;
-- validate;
-- report.
+- ensure Phase 6 package exists;
+- run compatibility check;
+- execute complete workflow twice;
+- validate semantic determinism;
+- emit summary.
 
 ## Package Structure
 
-Add only the required modules.
+Add only required modules.
 
-Suggested additions:
-
-```text
-src/sparrowml/
-├── models/
-│   └── mlp_classifier.py
-├── training/
-│   └── mlp_trainer.py
-├── quantization/
-│   ├── multilayer.py
-│   ├── activations.py
-│   └── requantization.py
-├── evaluation/
-│   └── multilayer_metrics.py
-└── compiler/
-    └── multilayer_lowering.py
-```
-
-Reuse existing quantization and compiler utilities where sensible.
-
-Do not create a general deep-learning framework.
-
-## Generated Artifacts
-
-Use:
+Suggested:
 
 ```text
-artifacts/phase6_multilayer/
+src/sparrowml/targets/sparrow_v/
+├── multilayer.py
+├── multilayer_workspace.py
+├── multilayer_execution.py
+├── multilayer_validation.py
+└── multilayer_reports.py
 ```
 
-At minimum generate:
+Reuse Phase 5 discovery, compatibility, subprocess, parsing, and schema utilities.
 
-```text
-fp32_checkpoint.pt
-training_metrics.json
-input_calibration.json
-hidden_calibration.json
-quantized_model.json
-integer_evaluation.json
-intermediate_traces.json
-export/
-summary.md
-determinism.json
-```
-
-Generated outputs should remain ignored.
+Do not duplicate the entire adapter.
 
 ## Tests
 
 Add focused tests for:
 
-### Model
+### Package loading
 
-- input shape `[batch, 16]`;
-- hidden shape `[batch, 16]`;
-- output shape `[batch, 4]`;
-- deterministic initialization;
-- parameter count.
+- Phase 6 package validation;
+- expected operator sequence;
+- required tensors;
+- required traces;
+- package hash verification.
 
-### Training
+### First-layer partitioning
 
-- deterministic short training;
-- validation checkpoint selection;
-- no test leakage;
-- checkpoint creation;
-- loss decreases.
+- exact `[16,16]` to four `[4,16]` slices;
+- correct output-channel ordering;
+- correct bias slices;
+- exact reference accumulator assembly;
+- deterministic manifests.
 
-### Hidden calibration
+### Bias handling
 
-- training split only;
-- deterministic scale;
-- no validation/test leakage;
-- nonnegative range;
-- clipping statistics.
+- representable bias path;
+- zero-bias plus reconstruction path;
+- provenance labels;
+- negative and large INT32 biases;
+- exact post-bias values.
 
-### ReLU and requantization
+### Intermediate processing
 
-- negative values become zero;
-- zero remains zero;
-- positive values quantize correctly;
-- ties-to-even rounding;
-- clamping to `[0, 127]`;
-- deterministic results.
-
-### Multi-layer integer inference
-
-- hand-computed tiny example;
-- first-layer accumulation;
-- bias handling;
-- per-channel reconstruction;
+- first-layer reconstruction;
 - ReLU;
 - hidden requantization;
-- second-layer accumulation;
-- final reconstruction;
-- prediction semantics.
+- ties-to-even;
+- clamp `[0,127]`;
+- exact hidden-code equality.
 
-### IR
+### Second-layer preparation
 
-- valid operator sequence;
-- intermediate tensor definitions;
-- producer/consumer checks;
-- invalid order rejection;
-- shape mismatch rejection;
-- cyclic graph rejection.
+- hidden vector ordering;
+- `fc2` weight ordering;
+- bias ordering;
+- expected accumulator loading.
 
-### Layout
+### Runtime parsing
 
-- hidden buffer allocation;
-- deterministic offsets;
-- alignment;
-- no overlap;
-- scratchpad capacity.
+- 16 first-layer values across partitions;
+- four second-layer values;
+- missing partition;
+- duplicate output channel;
+- malformed result;
+- trap/assertion failure.
 
-### Export
+### Counter aggregation
 
-- required files;
-- exact tensor decoding;
-- exact intermediate trace reproduction;
-- deterministic hashes;
-- no absolute paths.
+- measured versus derived labels;
+- partition aggregation;
+- unavailable counters;
+- multiplication counts;
+- cycle-total labelling.
 
-### CLI
+### Validation
 
-- commands parse;
-- smoke multi-layer run;
-- missing prerequisite error;
-- invalid configuration error.
+- one first-layer mismatch fails;
+- one hidden-code mismatch fails;
+- one second-layer mismatch fails;
+- prediction mismatch fails;
+- package-hash mismatch fails;
+- provenance fields required.
+
+### Integration
+
+With a real Sparrow-V checkout:
+
+- complete first-layer execution;
+- exact first-layer accumulator match;
+- exact hidden activation match;
+- complete second-layer execution;
+- exact second-layer accumulator match;
+- final prediction match;
+- two-run semantic determinism;
+- Sparrow-V working tree remains clean.
+
+Keep real integration tests separate from offline tests.
 
 Tests must not:
 
 - require internet;
 - require GPU;
-- require Sparrow-V;
 - modify Sparrow-V;
-- run Phase 5 integration;
-- perform long training repeatedly.
+- retrain Phase 6;
+- run synthesis, FPGA, or ASIC flows.
 
 ## Make Targets
 
 Add:
 
 ```text
-train-mlp
-quantize-mlp
-evaluate-mlp-int8
-export-mlp
-validate-mlp-export
-run-multilayer-baseline
-test-phase6
+prepare-sparrowv-mlp
+run-sparrowv-mlp
+validate-sparrowv-mlp
+run-sparrowv-mlp-baseline
+test-phase7
+test-phase7-integration
 ```
 
 Update `make help`.
 
-`make test-phase6` should run focused tests only.
+Expected behavior:
 
-`make run-multilayer-baseline` should perform the full Phase 6 flow once.
+```text
+make test-phase7
+```
 
-Do not rerun full Phase 1–5 workflows during every focused test.
+runs offline focused tests.
+
+```text
+make test-phase7-integration
+```
+
+requires the Sparrow-V checkout and runs real RTL simulation.
+
+```text
+make run-sparrowv-mlp-baseline
+```
+
+runs the full deterministic Phase 7 workflow.
 
 ## Documentation
 
 Update or add:
 
-- `README.md`;
-- `docs/architecture.md`;
-- `docs/build_roadmap.md`;
-- `docs/data_contracts.md`;
-- `docs/experiment_policy.md`;
-- `docs/codex_context.md`;
-- multi-layer quantization contract;
-- Phase 6 result documentation.
+- `README.md`
+- `docs/architecture.md`
+- `docs/build_roadmap.md`
+- `docs/codex_context.md`
+- `docs/data_contracts.md`
+- `docs/experiment_policy.md`
+- multi-layer runtime contract;
+- Phase 7 results.
 
-Suggested files:
+Suggested:
 
 ```text
-docs/multilayer_quantization_contract.md
-docs/results/phase6_multilayer_int8.md
+docs/sparrow_v_multilayer_runtime_contract.md
+docs/results/phase7_sparrow_v_multilayer_runtime.md
 ```
 
 Document:
 
-- FP32 model architecture;
-- training configuration;
-- input calibration;
-- hidden calibration;
-- integer ReLU;
-- hidden requantization;
-- two-layer accumulation;
-- per-layer quantization domains;
-- IR operator sequence;
-- memory map;
-- package format;
-- quality metrics;
-- limitations;
-- reproduction commands.
+- layer partitioning;
+- Sparrow-V interface used;
+- bias provenance;
+- intermediate ReLU/requantization provenance;
+- exact correctness gates;
+- counters and aggregation;
+- partitioned-cycle limitations;
+- semantic determinism;
+- reproduction commands;
+- remaining limitations.
 
 Keep `docs/codex_context.md` concise.
 
 ## README Status
 
-Update README status to:
+Update README only after real integration succeeds:
 
 ```text
-Phase 6 multi-layer INT8 model and multi-operator export implemented
+Phase 7 multi-layer Sparrow-V RTL/reference validation implemented
 ```
 
 Do not claim:
 
-- multi-layer Sparrow-V execution;
-- RTL validation of intermediate activations;
-- sparse multi-layer support;
+- monolithic optimized multi-layer hardware execution;
+- hardware ReLU unless it is truly executed there;
 - physical hardware execution;
-- real-world accuracy;
-- arbitrary neural-network compilation.
+- sparse MLP support;
+- real-world model accuracy;
+- hardware speedup.
 
 ## Existing Behavior Preservation
 
 Preserve:
 
 - Phase 1 FP32 baseline;
-- Phase 2 single-layer INT8;
-- Phase 3 single-layer structured sparsity;
-- Phase 4 single-operator export;
-- Phase 5 single-layer Sparrow-V RTL validation;
+- Phase 2 INT8 reference;
+- Phase 3 structured sparsity;
+- Phase 4 export;
+- Phase 5 single-layer RTL validation;
+- Phase 6 multi-layer model/export;
 - all existing CLI commands;
 - all existing tests;
-- Sparrow-V repository boundary.
+- Sparrow-V external interface.
 
 Do not modify Sparrow-V.
 
@@ -926,25 +747,21 @@ Do not modify Sparrow-V.
 
 Do not implement:
 
-- multi-layer Sparrow-V simulation;
-- new Sparrow-V instructions;
-- RTL modifications;
-- sparse hidden layer;
-- 2:4 pruning of the MLP;
-- mixed precision;
+- Sparrow-V RTL changes;
+- new instructions;
+- monolithic multi-layer hardware scheduler;
+- sparse MLP;
+- pruning of the MLP;
 - QAT;
-- distillation;
-- arbitrary graph compilation;
-- ONNX;
-- convolution;
-- recurrent models;
-- transformer models;
-- real dataset integration;
+- arbitrary graph runtime;
+- real dataset evaluation;
 - TinyNPU integration;
 - target selection;
 - hardware-aware optimization;
-- research experiments;
-- GUI or cloud training.
+- synthesis;
+- FPGA;
+- ASIC flow;
+- GUI or cloud execution.
 
 ## Validation
 
@@ -961,108 +778,112 @@ make test-phase3
 make test-phase4
 make test-phase5
 make test-phase6
+make test-phase7
 make smoke
 make check
 make docs-check
 git diff --check
 ```
 
-Also run once:
+Run real integration once:
 
 ```text
-make run-multilayer-baseline
+make test-phase7-integration
+make run-sparrowv-mlp-baseline
 ```
 
-Do not run Sparrow-V integration unless needed to ensure Phase 5 remains structurally intact.
+Verify Sparrow-V remains clean:
+
+```text
+git -C "$SPARROWV_ROOT" status --short
+```
+
+Do not run synthesis, FPGA, or ASIC targets.
 
 ## Acceptance Criteria
 
 The milestone is complete only when:
 
-1. A deterministic FP32 `16→16→4` MLP exists.
-2. ReLU is the only hidden activation.
-3. FP32 training uses fixed seeds.
-4. Validation controls checkpoint selection.
-5. Test data is not used for tuning.
-6. FP32 train metrics are reported.
-7. FP32 validation metrics are reported.
-8. FP32 test metrics are reported.
-9. FP32 test fixture accuracy is at least 95%.
-10. Input calibration uses training data only.
-11. Hidden calibration uses training data only.
-12. Input scale is deterministic.
-13. Hidden scale is deterministic.
-14. Both linear layers use signed INT8 weights.
-15. Both layers use per-output-channel weight scales.
-16. Both layers use INT32 biases.
-17. First-layer integer inference exists.
-18. First-layer accumulator ranges are validated.
-19. Reconstructed first-layer values are produced.
-20. ReLU is applied correctly.
-21. Hidden values are requantized to signed INT8 codes in `[0,127]`.
-22. Hidden clipping is reported.
-23. Second-layer integer inference exists.
-24. Second-layer accumulator ranges are validated.
-25. Final reconstructed logits are produced.
-26. Prediction uses correctly scaled logits.
-27. INT8 test fixture accuracy is at least 95%.
-28. INT8 accuracy drop versus FP32 is no more than three percentage points.
-29. FP32/INT8 prediction agreement is at least 95%.
-30. Confusion matrix is reported.
-31. Final logit error metrics are reported.
-32. Intermediate traces are emitted.
-33. Intermediate traces are deterministic.
-34. Existing IR supports multiple operators.
-35. `ReLU` is represented explicitly.
-36. `RequantizeInt8` is represented explicitly.
-37. Intermediate tensors are represented explicitly.
-38. Producer/consumer relationships validate.
-39. Invalid graph order is rejected.
-40. Tensor shapes validate.
-41. Memory layout includes a hidden buffer.
-42. Memory regions do not overlap.
-43. Scratchpad capacity is validated.
-44. A multi-layer package is generated.
-45. Model binary decodes exactly.
-46. Input binary decodes exactly.
-47. Decoded first-layer accumulators reproduce exactly.
-48. Decoded hidden INT8 activations reproduce exactly.
-49. Decoded second-layer accumulators reproduce exactly.
-50. Final prediction reproduces exactly.
-51. Export is byte-for-byte deterministic.
-52. Symbolic multi-command program is generated.
-53. No raw unsupported ISA encoding is invented.
-54. One command reproduces the Phase 6 workflow.
-55. Phase 1 remains passing.
-56. Phase 2 remains passing.
-57. Phase 3 remains passing.
-58. Phase 4 remains passing.
-59. Phase 5 unit tests remain passing.
-60. Phase 6 focused tests pass.
-61. Tests require no internet.
-62. Tests require no GPU.
-63. Tests require no Sparrow-V checkout.
-64. Sparrow-V is not modified.
-65. Documentation matches implementation.
-66. README status is accurate.
-67. General repository checks pass.
-68. Documentation checks pass.
-69. `git diff --check` passes.
-70. No commit or push occurs.
-71. `docs/codex_milestone_result.md` is finalized.
+1. Phase 6 package loading is supported.
+2. The multi-layer graph is validated.
+3. Sparrow-V checkout discovery is reused.
+4. Compatibility audit records output-count capability.
+5. First-layer execution strategy is explicit.
+6. Four-way partitioning is used if required.
+7. All first-layer weight slices are exact.
+8. All first-layer bias slices are exact.
+9. All 16 first-layer outputs are assembled in order.
+10. First-layer raw RTL accumulators are recorded.
+11. First-layer post-bias accumulators are recorded.
+12. Accumulator provenance is recorded.
+13. All 16 first-layer accumulators match exactly.
+14. Reconstructed hidden values are recorded.
+15. ReLU values are recorded.
+16. Hidden quantization settings are recorded.
+17. Hidden INT8 codes are recorded.
+18. Hidden provenance is recorded.
+19. All 16 hidden INT8 values match exactly.
+20. Second-layer input ordering is exact.
+21. Second-layer weights are exact.
+22. Second-layer biases are exact.
+23. Second-layer raw RTL accumulators are recorded.
+24. Second-layer post-bias accumulators are recorded.
+25. All four second-layer accumulators match exactly.
+26. Final logits are reconstructed.
+27. Final prediction matches exactly.
+28. A versioned multi-layer result schema exists.
+29. Package hashes are verified.
+30. Simulator commands are captured.
+31. Exit statuses are captured.
+32. Stdout and stderr are retained.
+33. Traps and assertion failures are rejected.
+34. Counters are collected per layer or partition.
+35. Counter provenance is explicit.
+36. Partitioned cycle totals are labelled honestly.
+37. Executed multiplication counts are reported.
+38. Total dense multiplication count is 320.
+39. Complete workflow runs twice.
+40. Semantic hashes match across repeats.
+41. Host-only nondeterminism is excluded from hashes.
+42. Cross-layer summary is generated.
+43. Phase 1 remains passing.
+44. Phase 2 remains passing.
+45. Phase 3 remains passing.
+46. Phase 4 remains passing.
+47. Phase 5 remains passing.
+48. Phase 6 remains passing.
+49. Phase 7 offline tests pass.
+50. Phase 7 real integration tests pass.
+51. Tests require no internet.
+52. Tests require no GPU.
+53. Sparrow-V tracked tree remains clean.
+54. Sparrow-V RTL is not modified.
+55. No commit occurs inside Sparrow-V.
+56. Documentation matches implementation.
+57. README status is accurate.
+58. General checks pass.
+59. Documentation checks pass.
+60. `git diff --check` passes.
+61. No commit or push occurs.
+62. `docs/codex_milestone_result.md` is finalized.
 
 ## Stop Conditions
 
 Stop for human review only if:
 
-- the existing fixture cannot train the MLP to the required quality gate;
-- hidden activation quantization cannot meet the quality gate without changing the test split;
-- accumulator bounds exceed signed INT32;
-- the current IR cannot be extended without breaking Phase 4 packages;
-- the model cannot fit the configured Sparrow-V scratchpad;
-- a major Phase 1–5 correctness defect is discovered.
+- Sparrow-V’s external interface cannot execute the first layer through deterministic `16→4` partitions;
+- output partitioning changes arithmetic semantics;
+- Phase 6 package values cannot be represented by the external interface;
+- bias reconstruction cannot reproduce exact reference values;
+- hidden activation reconstruction cannot reproduce Phase 6 traces;
+- second-layer execution cannot use the validated hidden vector;
+- Sparrow-V produces irreconcilable accumulator mismatches;
+- a Sparrow-V source or RTL change is genuinely required;
+- a major Phase 1–6 correctness defect is discovered.
 
-Ordinary training instability, calibration bugs, requantization errors, IR validation issues, memory-layout bugs, test failures, and documentation work are not stop conditions.
+If a Sparrow-V extension appears necessary, stop and report the smallest proposed non-RTL interface change. Do not modify Sparrow-V automatically.
+
+Ordinary adapter, slicing, parsing, provenance, counter, test, and documentation bugs are not stop conditions.
 
 ## Token-Efficiency Instructions
 
@@ -1070,16 +891,15 @@ Follow `AGENTS.md`.
 
 In particular:
 
-- inspect only model, training, quantization, compiler, and export files relevant to Phase 6;
-- do not inspect Sparrow-V broadly;
-- do not run Sparrow-V simulation;
-- support only `16→16→4`;
-- do not build a general graph compiler;
-- do not perform a hyperparameter sweep;
-- run focused tests while developing;
-- run aggregate validation once;
-- keep result reporting concise;
-- reuse existing deterministic utilities.
+- reuse Phase 5 adapter infrastructure;
+- inspect only the Phase 6 package and the existing external workload interface;
+- do not broadly audit Sparrow-V;
+- do not build an arbitrary graph runtime;
+- use four-output partitioning if it avoids interface changes;
+- run offline focused tests during development;
+- run real RTL integration only after preparation is stable;
+- run aggregate checks once;
+- keep the result file concise.
 
 ## Result File
 
@@ -1095,45 +915,43 @@ Finalize with:
 STATUS: COMPLETE
 ```
 
-only when all required implementation and validation pass.
+only if real multi-layer Sparrow-V execution succeeds and every exact correctness gate passes.
 
 Include:
 
-- FP32 model architecture;
-- parameter count;
-- training configuration;
-- best epoch;
-- train/validation/test FP32 metrics;
-- input calibration;
-- hidden calibration;
-- per-layer quantization schemes;
-- accumulator ranges;
-- hidden clipping;
-- INT8 metrics;
-- prediction agreement;
-- confusion matrix;
-- logit error;
-- IR operator sequence;
-- memory layout;
-- generated package files;
-- determinism evidence;
-- exact validation commands and outcomes;
-- changed files;
+- Sparrow-V commit and interface version;
+- Phase 6 package identity;
+- first-layer execution strategy;
+- partition count;
+- first-layer expected and observed accumulators;
+- bias provenance;
+- hidden expected and observed INT8 activations;
+- ReLU/requantization provenance;
+- second-layer expected and observed accumulators;
+- final prediction;
+- measured counters;
+- derived counters;
+- unavailable counters;
+- partitioned cycle and instruction totals;
+- semantic determinism evidence;
+- generated artifact paths;
+- validation commands and outcomes;
+- changed SparrowML files;
+- confirmation that Sparrow-V remained clean;
 - remaining limitations;
 - next recommended milestone;
-- confirmation that Sparrow-V was not modified;
 - confirmation that no commit or push occurred.
 
-Use `STATUS: FAILED` if required work or validation remains incomplete.
+Use `STATUS: FAILED` if implementation or correctness checks remain incomplete.
 
-Use `STATUS: BLOCKED` only for a genuine architectural or quality-gate blocker.
+Use `STATUS: BLOCKED` only for a genuine Sparrow-V interface or architectural blocker.
 
 ## Next Milestone
 
 The expected next milestone is:
 
 ```text
-Multi-layer Sparrow-V runtime execution and intermediate RTL/reference validation
+Real vibration dataset integration and full FP32/INT8/Sparrow-V evaluation
 ```
 
 Do not implement it during this milestone.
