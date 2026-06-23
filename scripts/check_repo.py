@@ -16,7 +16,8 @@ LINK_PATTERN = re.compile(r"(?<!!)\[[^]]*\]\(([^)]+)\)")
 ABSOLUTE_PATTERN = re.compile(r"(?<![\w-])/(?:Users|home|tmp)/")
 
 def files_in_tree() -> list[Path]:
-    return [p for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts]
+    ignored_generated = ((ROOT / "artifacts").resolve(), (ROOT / "data" / "processed" / "sensor_fixture").resolve())
+    return [p for p in ROOT.rglob("*") if p.is_file() and ".git" not in p.parts and not any(root in p.resolve().parents for root in ignored_generated)]
 
 def main() -> int:
     parser = argparse.ArgumentParser()
