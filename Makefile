@@ -1,9 +1,9 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-3 targets lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 milestone clean"
+	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-5 targets sparrowv-doctor prepare-sparrowv-{dense,sparse} run-sparrowv-{dense,sparse,baseline} test-phase5 test-phase5-integration milestone clean"
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'
@@ -88,6 +88,30 @@ run-export-baseline:
 
 test-phase4:
 	$(PYTHON) -m pytest tests/test_phase4.py
+
+sparrowv-doctor:
+	$(PYTHON) -m sparrowml.cli sparrowv-doctor
+
+prepare-sparrowv-dense:
+	$(PYTHON) -m sparrowml.cli prepare-sparrowv-run --mode dense
+
+prepare-sparrowv-sparse:
+	$(PYTHON) -m sparrowml.cli prepare-sparrowv-run --mode sparse
+
+run-sparrowv-dense:
+	$(PYTHON) -m sparrowml.cli run-sparrowv --mode dense
+
+run-sparrowv-sparse:
+	$(PYTHON) -m sparrowml.cli run-sparrowv --mode sparse
+
+run-sparrowv-baseline:
+	$(PYTHON) -m sparrowml.cli run-sparrowv-baseline
+
+test-phase5:
+	$(PYTHON) -m pytest tests/test_phase5.py
+
+test-phase5-integration:
+	SPARROWML_REQUIRE_SPARROWV=1 $(PYTHON) -m pytest tests/test_phase5_integration.py
 
 milestone:
 	bash ./scripts/run_milestone.sh

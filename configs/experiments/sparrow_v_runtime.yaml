@@ -1,0 +1,13 @@
+dense_package: artifacts/phase4_export/dense
+sparse_package: artifacts/phase4_export/sparse
+target_config: configs/targets/sparrow_v.yaml
+repository_discovery: environment_then_configuration_then_sibling
+dense_execution_target: test-sensor-rtl-external-dense
+sparse_execution_target: test-sensor-rtl-external-sparse
+timeout_seconds: 300
+workspace_root: artifacts/phase5_runtime
+retain_logs: true
+expected_result_schema: sparrowml_sparrowv_runtime_result_v1
+required_counters: [cycles, retired_instructions, vector_loads, dense_dot_products, sparse_dot_products]
+optional_counters: [vector_stores, executed_int8_multiplications, skipped_int8_multiplications]
+semantic_determinism_repeat_count: 2

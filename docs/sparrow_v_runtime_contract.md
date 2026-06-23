@@ -1,0 +1,7 @@
+# Sparrow-V Runtime Contract
+
+Phase 5 supports exactly one `Linear(16,4)` sample in `dense_int8` or `sparse_2of4_int8` mode. Checkout discovery uses `SPARROWV_ROOT`, then portable `../sparrow-v` configuration/sibling fallback. The adapter requires Sparrow-V's documented `scripts/run_external_sensor_workload.py`, `scripts/sensor_workload.py`, and external sensor workload contract; it never writes its source tree.
+
+The adapter converts a validated Phase 4 package to `sparrowv_external_sensor_workload_v1` in an isolated `artifacts/phase5_runtime/{dense,sparse}` workspace. It invokes the existing runner, captures stdout/stderr, converts Sparrow-V's result to `sparrowml_sparrowv_runtime_result_v1`, and checks exactly four INT32 values and the prediction against `expected_output.json`. The external template directly applies only signed-12-bit biases. When a package has larger INT32 biases, it runs an RTL-asserted zero-bias dot product and adds the serialized bias on the host; this is explicitly recorded as host-side reconstruction.
+
+Counters are retained only when Sparrow-V exposes them. Its cycles, retired instructions, loads, stores, dot counts, and sparse executed/skipped multiplies are measured; dense conceptual multiplies are derived; inapplicable values are unavailable. Semantic hashes exclude elapsed host time and paths. `make run-sparrowv-baseline` runs both modes twice, writes compatibility, per-mode results/logs/program evidence, determinism, and cross-mode reports. It makes no hardware or speedup claim.

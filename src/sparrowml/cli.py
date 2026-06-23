@@ -22,6 +22,10 @@ from .sparsity.pipeline import evaluate as evaluate_sparse, finetune as finetune
 from .compiler.exporter import export_package, run_baseline as run_export_baseline, validate_package
 from .compiler.ir import parse_ir, serialize_ir
 from .compiler.lowering import lower_artifact
+from .targets.sparrow_v.compatibility import audit
+from .targets.sparrow_v.discovery import discover
+from .targets.sparrow_v.runtime import prepare as prepare_sparrowv, run as run_sparrowv, validate_result as validate_sparrowv_result
+from .targets.sparrow_v.reports import write_baseline_report
 
 
 def _doctor() -> int:
@@ -52,6 +56,57 @@ def _validate_contracts() -> int:
     SparrowVResult("complete", (4, -2), 0, 12, 8, 1, 1, 0, 64, 0)
     print("contracts: valid")
     return 0
+
+
+def _sparrowv_checkout():
+    config = load_project_config()
+    return config, discover(config.root, "../sparrow-v")
+
+
+def _sparrowv_doctor() -> int:
+    config, checkout = _sparrowv_checkout(); report = audit(checkout)
+    target = config.root / "artifacts/phase5_runtime/compatibility.json"; target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"Sparrow-V: resolved ({report['checkout']['discovery_source']}); compatible={report['compatible']}; missing={','.join(report['missing_requirements']) or 'none'}")
+    return 0 if report["compatible"] else 2
+
+
+def _phase5_package(root: Path, mode: str) -> Path:
+    package = root / "artifacts/phase4_export" / mode
+    return package if package.is_dir() else export_package(root, mode)
+
+
+def _prepare_sparrowv(mode: str, package: str | None, output: str | None) -> int:
+    root = load_project_config().root; source = root / package if package else _phase5_package(root, mode)
+    target = root / (output or f"artifacts/phase5_runtime/{mode}")
+    prepare_sparrowv(source, target); print(f"prepared: {target.relative_to(root)}"); return 0
+
+
+def _run_sparrowv(mode: str, package: str | None, output: str | None) -> int:
+    config, checkout = _sparrowv_checkout(); source = config.root / package if package else _phase5_package(config.root, mode)
+    target = config.root / (output or f"artifacts/phase5_runtime/{mode}")
+    result = run_sparrowv(checkout, source, target, config.sparrow_v.timeout_seconds)
+    print(f"Sparrow-V {mode}: {result['validation_status']}")
+    return 0 if result["validation_status"] == "passed" else 1
+
+
+def _validate_sparrowv(package: str, result: str) -> int:
+    root = load_project_config().root; verdict = validate_sparrowv_result(json.loads((root / result).read_text()), root / package)
+    print(f"Sparrow-V result validation: {verdict['valid']}"); return 0 if verdict["valid"] else 1
+
+
+def _run_sparrowv_baseline() -> int:
+    config, checkout = _sparrowv_checkout(); compatibility = audit(checkout)
+    if not compatibility["compatible"]: raise ValueError("Sparrow-V is incompatible: " + ", ".join(compatibility["missing_requirements"]))
+    root = config.root / "artifacts/phase5_runtime"; root.mkdir(parents=True, exist_ok=True)
+    (root / "compatibility.json").write_text(json.dumps(compatibility, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    results = {}
+    for mode in ("dense", "sparse"):
+        package = _phase5_package(config.root, mode); runs = []
+        for _ in range(2): runs.append(run_sparrowv(checkout, package, root / mode, config.sparrow_v.timeout_seconds))
+        if not all(item["validation_status"] == "passed" for item in runs): raise ValueError(f"Sparrow-V {mode} validation failed")
+        results[mode] = runs
+    write_baseline_report(root, results); print("Sparrow-V baseline: dense and sparse passed twice"); return 0
 
 
 def _phase1_config(path: str | None) -> tuple[dict[str, object], Path]:
@@ -209,6 +264,11 @@ def main(argv: list[str] | None = None) -> int:
     validate = subparsers.add_parser("validate-export")
     validate.add_argument("package", help="deployment package path relative to repository")
     subparsers.add_parser("run-export-baseline")
+    subparsers.add_parser("sparrowv-doctor")
+    for name in ("prepare-sparrowv-run", "run-sparrowv"):
+        phase5 = subparsers.add_parser(name); phase5.add_argument("--mode", choices=("dense", "sparse"), required=True); phase5.add_argument("--package"); phase5.add_argument("--output")
+    phase5_validate = subparsers.add_parser("validate-sparrowv-result"); phase5_validate.add_argument("package"); phase5_validate.add_argument("result")
+    subparsers.add_parser("run-sparrowv-baseline")
     args = parser.parse_args(argv)
     try:
         commands = {"doctor": lambda: _doctor(), "show-config": lambda: _show_config(), "validate-contracts": lambda: _validate_contracts(),
@@ -219,6 +279,7 @@ def main(argv: list[str] | None = None) -> int:
                     "prune-2of4": lambda: _phase3("prune-2of4", args.config), "finetune-sparse": lambda: _phase3("finetune-sparse", args.config),
                     "pack-sparse": lambda: _phase3("pack-sparse", args.config), "evaluate-sparse": lambda: _phase3("evaluate-sparse", args.config), "run-sparse-baseline": lambda: _phase3("run-sparse-baseline", args.config),
                     "lower-ir": lambda: _lower_ir(args.mode, args.output), "validate-ir": lambda: _validate_ir(args.ir_file), "export-sparrowv": lambda: _export_sparrowv(args.mode, args.output), "validate-export": lambda: _validate_export(args.package), "run-export-baseline": lambda: _run_export_baseline()}
+        commands.update({"sparrowv-doctor": _sparrowv_doctor, "prepare-sparrowv-run": lambda: _prepare_sparrowv(args.mode, args.package, args.output), "run-sparrowv": lambda: _run_sparrowv(args.mode, args.package, args.output), "validate-sparrowv-result": lambda: _validate_sparrowv(args.package, args.result), "run-sparrowv-baseline": _run_sparrowv_baseline})
         return commands[args.command]()
     except ValueError as exc:
         parser.error(str(exc))
