@@ -1,0 +1,7 @@
+project:
+  name: SparrowML
+  version: 0.1.0
+targets:
+  sparrow_v: configs/targets/sparrow_v.yaml
+artifacts_root: artifacts
+data_root: data

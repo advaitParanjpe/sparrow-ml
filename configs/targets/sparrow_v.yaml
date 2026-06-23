@@ -1,0 +1,11 @@
+name: sparrow_v
+root_env: SPARROWV_ROOT
+default_root: ../sparrow-v
+enabled: false
+timeout_seconds: 300
+commands:
+  validate: make test
+  run: make run
+artifacts:
+  input_dir: artifacts/deployment
+  output_dir: artifacts/results
