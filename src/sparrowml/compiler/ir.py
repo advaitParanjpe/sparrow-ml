@@ -7,6 +7,7 @@ from pathlib import PurePosixPath
 from typing import Any
 
 IR_FORMAT_VERSION = "sparrowml_ir_v1"
+MULTILAYER_IR_FORMAT_VERSION = "sparrowml_ir_v2_multilayer"
 ELEMENT_BYTES = {"int8": 1, "uint8": 1, "int32": 4, "float32": 4}
 
 
@@ -22,15 +23,23 @@ def parse_ir(payload: str | bytes) -> dict[str, Any]:
     value = json.loads(payload)
     if not isinstance(value, dict):
         raise ValueError("IR root must be an object")
-    from .validation import validate_ir
-    validate_ir(value)
+    _validate(value)
     return value
 
 
 def serialize_ir(ir: dict[str, Any]) -> bytes:
+    _validate(ir)
+    return canonical_json(ir).encode("utf-8")
+
+
+def _validate(ir: dict[str, Any]) -> None:
+    """Validate either preserved Phase 4 IR v1 or the fixed Phase 6 extension."""
+    if ir.get("format_version") == MULTILAYER_IR_FORMAT_VERSION:
+        from sparrowml.quantization.multilayer import validate_ir as validate_multilayer_ir
+        validate_multilayer_ir(ir)
+        return
     from .validation import validate_ir
     validate_ir(ir)
-    return canonical_json(ir).encode("utf-8")
 
 
 def relative_identity(value: str) -> str:

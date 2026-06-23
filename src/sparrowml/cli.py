@@ -22,6 +22,7 @@ from .sparsity.pipeline import evaluate as evaluate_sparse, finetune as finetune
 from .compiler.exporter import export_package, run_baseline as run_export_baseline, validate_package
 from .compiler.ir import parse_ir, serialize_ir
 from .compiler.lowering import lower_artifact
+from .quantization.multilayer import calibrate as calibrate_mlp, evaluate as evaluate_mlp, export as export_mlp, quantize as quantize_mlp, run_baseline as run_mlp_baseline, train as train_mlp, validate_export as validate_mlp_export
 from .targets.sparrow_v.compatibility import audit
 from .targets.sparrow_v.discovery import discover
 from .targets.sparrow_v.runtime import prepare as prepare_sparrowv, run as run_sparrowv, validate_result as validate_sparrowv_result
@@ -239,6 +240,17 @@ def _run_export_baseline() -> int:
     return 0
 
 
+def _phase6(command: str, config_path: str | None, package: str | None = None) -> int:
+    commands = {"train-mlp": train_mlp, "quantize-mlp": quantize_mlp, "evaluate-mlp-int8": evaluate_mlp, "export-mlp": export_mlp, "run-multilayer-baseline": run_mlp_baseline}
+    if command == "validate-mlp-export":
+        root = load_project_config().root
+        result = validate_mlp_export(root / (package or "artifacts/phase6_multilayer/export"))
+    else:
+        result = commands[command](config_path)
+    print(f"{command}: complete")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sparrowml")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -264,6 +276,9 @@ def main(argv: list[str] | None = None) -> int:
     validate = subparsers.add_parser("validate-export")
     validate.add_argument("package", help="deployment package path relative to repository")
     subparsers.add_parser("run-export-baseline")
+    for name in ("train-mlp", "quantize-mlp", "evaluate-mlp-int8", "export-mlp", "run-multilayer-baseline"):
+        phase6 = subparsers.add_parser(name); phase6.add_argument("--config", help="repository-relative Phase 6 YAML configuration")
+    phase6_validate = subparsers.add_parser("validate-mlp-export"); phase6_validate.add_argument("--package", help="package path relative to repository")
     subparsers.add_parser("sparrowv-doctor")
     for name in ("prepare-sparrowv-run", "run-sparrowv"):
         phase5 = subparsers.add_parser(name); phase5.add_argument("--mode", choices=("dense", "sparse"), required=True); phase5.add_argument("--package"); phase5.add_argument("--output")
@@ -279,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
                     "prune-2of4": lambda: _phase3("prune-2of4", args.config), "finetune-sparse": lambda: _phase3("finetune-sparse", args.config),
                     "pack-sparse": lambda: _phase3("pack-sparse", args.config), "evaluate-sparse": lambda: _phase3("evaluate-sparse", args.config), "run-sparse-baseline": lambda: _phase3("run-sparse-baseline", args.config),
                     "lower-ir": lambda: _lower_ir(args.mode, args.output), "validate-ir": lambda: _validate_ir(args.ir_file), "export-sparrowv": lambda: _export_sparrowv(args.mode, args.output), "validate-export": lambda: _validate_export(args.package), "run-export-baseline": lambda: _run_export_baseline()}
+        commands.update({name: (lambda command=name: _phase6(command, getattr(args, "config", None))) for name in ("train-mlp", "quantize-mlp", "evaluate-mlp-int8", "export-mlp", "run-multilayer-baseline")})
+        commands["validate-mlp-export"] = lambda: _phase6("validate-mlp-export", None, args.package)
         commands.update({"sparrowv-doctor": _sparrowv_doctor, "prepare-sparrowv-run": lambda: _prepare_sparrowv(args.mode, args.package, args.output), "run-sparrowv": lambda: _run_sparrowv(args.mode, args.package, args.output), "validate-sparrowv-result": lambda: _validate_sparrowv(args.package, args.result), "run-sparrowv-baseline": _run_sparrowv_baseline})
         return commands[args.command]()
     except ValueError as exc:

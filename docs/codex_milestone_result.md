@@ -1,14 +1,26 @@
 STATUS: COMPLETE
-MILESTONE: Sparrow-V Runtime Adapter, Simulator Execution, and RTL/Reference Validation
 
-Resolved Sparrow-V checkout: sibling/environment-resolved `../sparrow-v`, commit `995ea0f9cada63688c9e21e739bd41d6b1c118af`. The adapter uses Sparrow-V's existing `sparrowv_external_sensor_workload_v1` interface through `scripts/run_external_sensor_workload.py`; generated input is JSON plus the runner's retained `.mem` program image. No Sparrow-V source or RTL was modified; its final `git status --short` was empty.
+# Phase 6 multi-layer INT8 model and multi-operator export
 
-Dense simulation: exit 0, exact expected/observed accumulators `[39603, -17389, -1218, -26014]`, prediction `0` (`normal`), 484 measured cycles, 109 measured retired instructions, 32 measured vector loads, 16 measured dense dots, and 64 derived conceptual multiplies. Sparse simulation: exit 0, exact expected/observed accumulators `[27952, -9483, -738, -19017]`, prediction `0` (`normal`), 484 measured cycles, 109 measured retired instructions, 32 measured vector loads, 16 measured sparse dots, 32 measured executed and 32 measured skipped multiplies. Inapplicable counters are labelled unavailable. Equal cycles are reported directly; no speedup claim is made.
+Implemented the fixed CPU FP32 architecture `Linear(16,16) -> ReLU -> Linear(16,4)`. It has 340 parameters (`fc1`: 272, `fc2`: 68); the selected checkpoint is 3949 bytes. Training used seed 20260623, Adam learning rate 0.005, batch size 32, 50 epochs, deterministic CPU/DataLoader settings, and validation-loss checkpoint selection (best epoch 50). No test data was used for tuning.
 
-The existing Sparrow-V workload template can directly materialize only signed-12-bit biases. This package's INT32 biases are therefore added by explicit host-side reconstruction after a zero-bias runtime-software result that the RTL testbench asserts. Results record this provenance and do not label reconstructed values as RTL-produced.
+Measured synthetic-fixture FP32 accuracy was 100% on train (360), validation (76), and test (76), with diagonal test confusion matrix `[[19,0,0,0],[0,19,0,0],[0,0,19,0],[0,0,0,19]]`. These are synthetic-fixture measurements, not general-model accuracy claims.
 
-Semantic determinism: dense and sparse each passed two runs with identical semantic hashes. Generated evidence: `artifacts/phase5_runtime/compatibility.json`, `{dense,sparse}/result.json`, logs, `generated_program.mem`, `cross_mode_report.json`, `determinism.json`, and `summary.md`.
+Input calibration used 360 training samples: scale 0.020786371756726364, zero point 0. Hidden ReLU calibration used the same training samples: min 0, max/max-abs 7.323272228240967, scale 0.05766356085229108, zero point 0, and zero clipped values. Both linear layers have signed per-output-channel INT8 weights and INT32 biases using incoming activation-scale times channel weight-scale. ReLU is reconstructed exactly from fc1 accumulator values, then hidden values use NumPy ties-to-even rounding and explicit clamp `[0,127]`.
 
-Validation passed: `python3 -m compileall src scripts`; `pytest` (31 passed); `make test-phase1`; `make test-phase2`; `make test-phase3`; `make test-phase4`; `make test-phase5`; `make smoke`; `make check`; `make docs-check`; `git diff --check`; `make test-phase5-integration` (2 passed); and `make run-sparrowv-baseline`.
+Measured INT8 test accuracy and FP32/INT8 agreement were both 100%, with zero disagreements and zero hidden activation clipping. Test accumulator ranges were fc1 `[-77873, 78494]` and fc2 `[-34471, 24971]`, within signed INT32. Test final-logit error was max absolute 0.07607368794544023, mean absolute 0.020978947802905153, RMS 0.02604373826676825; test confusion matrix remained diagonal.
 
-Changed SparrowML areas: Phase 5 discovery, compatibility, runtime and reporting modules; CLI/Make/configuration; focused unit/integration tests; and Phase 5 contract/status documentation. Limitations: only one 16x4 sample and the documented external Sparrow-V path are supported; execution is RTL simulation, not physical hardware. Next recommended milestone: Multi-layer INT8 model, intermediate activation quantization, and multi-operator compilation. No commit or push occurred.
+Added a backwards-compatible Phase 6 IR path with `DenseLinearInt8`, `ReLU`, `RequantizeInt8`, and `DenseLinearInt8`; it validates tensor producers/consumers, static shapes, order, and hidden range. The deterministic 528-byte package has four-byte alignment, an explicit 16-byte hidden buffer, and fits the 4096-byte configured scratchpad. It contains all required model, input, trace, symbolic-program, report, and manifest artifacts. Reload validation exactly reproduced decoded tensors, fc1/fc2 accumulators, hidden INT8 codes, and final predictions. Repeated export hashes matched byte-for-byte.
+
+Validation passed:
+
+- `python3 -m compileall src scripts`
+- `pytest` (34 passed)
+- `make test-phase1`, `test-phase2`, `test-phase3`, `test-phase4`, `test-phase5`, `test-phase6`
+- `make smoke`, `make check`, `make docs-check`
+- `git diff --check`
+- `make run-multilayer-baseline`
+
+Changed files: Phase 6 model, quantization/training/evaluation/export workflow, CLI, configuration, Make targets, focused tests, README, architecture/data/experiment/context/roadmap documentation, quantization contract, and Phase 6 results.
+
+Remaining limitations: fixed `16->16->4` dense graph only; no sparse MLP, arbitrary graph compilation, or multi-layer Sparrow-V/RTL execution. Sparrow-V was not modified. No commit or push occurred. Recommended next milestone: multi-layer Sparrow-V runtime execution and intermediate RTL/reference validation.

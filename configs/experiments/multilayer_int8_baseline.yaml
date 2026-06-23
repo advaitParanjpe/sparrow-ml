@@ -1,0 +1,20 @@
+seed: 20260623
+dataset:
+  fixture_directory: data/processed/sensor_fixture
+training:
+  epochs: 50
+  batch_size: 32
+  learning_rate: 0.005
+  dataloader_seed: 20260623
+input_quantization: {scheme: per_tensor_symmetric_int8, calibration_policy: max_abs_div_127}
+hidden_quantization: {scheme: per_tensor_symmetric_int8_nonnegative, calibration_policy: max_train_relu_div_127, range: [0, 127]}
+weight_quantization: {scheme: per_output_channel_symmetric_int8, axis: 0}
+acceptance_gates:
+  minimum_test_fixture_accuracy: 0.95
+  maximum_test_accuracy_drop: 0.03
+  minimum_prediction_agreement: 0.95
+output_directory: artifacts/phase6_multilayer
+ir_version: sparrowml_ir_v2_multilayer
+package_version: sparrowml_multilayer_package_v1
+alignment: 4
+target: configs/targets/sparrow_v.yaml
