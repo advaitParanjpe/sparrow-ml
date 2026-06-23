@@ -1,86 +1,142 @@
-# Milestone: SparrowML Intermediate Representation and Sparrow-V Artifact Exporter
+# Milestone: Sparrow-V Runtime Adapter, Simulator Execution, and RTL/Reference Validation
 
 ## Objective
 
-Extend SparrowML from trained/quantized model artifacts into a deterministic ahead-of-time deployment pipeline for Sparrow-V.
+Connect SparrowML’s deterministic Phase 4 deployment packages to the external Sparrow-V repository and validate execution against SparrowML’s integer reference models.
 
 This milestone must:
 
-1. define a small explicit SparrowML intermediate representation;
-2. lower the current dense INT8 and sparse 2:4 linear models into that IR;
-3. validate tensor shapes, quantization domains, operator legality, and memory sizes;
-4. generate Sparrow-V-compatible model, input, weight, bias, scale, metadata, and expected-output artifacts;
-5. generate deterministic data-memory images and deployment manifests;
-6. preserve enough semantic information for a later runtime milestone to invoke Sparrow-V and compare RTL outputs;
-7. validate exported artifacts against SparrowML’s integer reference implementations;
-8. emit stable, documented, versioned deployment packages.
+1. discover and validate a local Sparrow-V checkout;
+2. define a stable SparrowML-to-Sparrow-V runtime adapter;
+3. inspect and use Sparrow-V’s existing documented simulation interfaces;
+4. convert Phase 4 deployment packages into the exact files required by Sparrow-V;
+5. execute dense and sparse workloads through Sparrow-V simulation;
+6. parse architectural results and performance counters;
+7. compare Sparrow-V results against SparrowML’s expected integer-reference outputs;
+8. generate deterministic integration reports;
+9. preserve a strict repository boundary with no Sparrow-V RTL modification;
+10. provide one command that exports, executes, validates, and reports both dense and sparse modes.
 
-This milestone is about **compiler representation, lowering, layout, and export correctness**.
+This milestone is about **real cross-repository execution and result validation**.
 
-Do not execute Sparrow-V, modify Sparrow-V RTL, collect hardware counters, add new instructions, or implement a full general-purpose compiler.
+Do not add new Sparrow-V instructions, modify RTL, redesign the CPU/vector interface, add multi-layer models, or perform hardware-aware optimization.
 
 ## Current Baseline
 
 Phase 1 provides:
 
 - deterministic synthetic sensor fixture;
-- 512 samples;
-- 16 input features;
-- four output classes;
-- train-only standardization;
-- FP32 `Linear(16, 4)` model.
+- FP32 `Linear(16, 4)` baseline;
+- train-only preprocessing.
 
 Phase 2 provides:
 
-- per-tensor symmetric INT8 input quantization;
-- per-output-channel symmetric INT8 weights;
+- signed INT8 input quantization;
+- per-output-channel INT8 weights;
 - INT32 biases;
-- explicit dense integer reference inference;
-- deterministic quantized-model artifact.
+- exact dense integer reference inference.
 
 Phase 3 provides:
 
-- deterministic 2:4 structured pruning;
-- 32 retained and 32 pruned weights;
-- compressed two-weight representation;
-- legal Sparrow-V metadata;
-- six-byte packed metadata;
-- exact dense-form/compressed sparse accumulator equivalence;
-- deterministic sparse artifact.
+- deterministic 2:4 structured sparsity;
+- compressed INT8 weights;
+- packed three-bit metadata;
+- exact compressed sparse integer reference inference.
 
-The current supported deployable models are:
+Phase 4 provides:
+
+- versioned SparrowML IR;
+- deterministic dense and sparse deployment packages;
+- target memory maps;
+- model and input binaries;
+- symbolic programs;
+- expected accumulators, logits, and predictions;
+- package reload validation;
+- byte-for-byte deterministic export.
+
+Supported execution modes remain:
 
 ```text
-dense INT8 Linear(16, 4)
-sparse 2:4 INT8 Linear(16, 4)
+dense_int8
+sparse_2of4_int8
 ```
 
-Do not generalize beyond these models unless a small abstraction is required for correctness.
+Supported model remains:
+
+```text
+Linear(16, 4)
+```
 
 ## Repository Boundary
 
 SparrowML owns:
 
-- model representation;
-- quantization and sparsity metadata;
-- compiler IR;
-- lowering;
-- memory-layout planning;
-- deployment-package generation;
-- expected-output generation;
-- export validation.
+- package discovery;
+- compatibility checks;
+- runtime orchestration;
+- adapter-side file conversion;
+- subprocess execution;
+- result parsing;
+- reference comparison;
+- integration reports.
 
-Sparrow-V remains an external deployment target.
+Sparrow-V owns:
+
+- RTL;
+- software/runtime code inside Sparrow-V;
+- assembler or image generation already present there;
+- simulation harness;
+- architectural counters;
+- instruction semantics;
+- final simulated execution.
 
 This milestone must not:
 
-- copy Sparrow-V RTL;
-- edit Sparrow-V;
-- invoke Sparrow-V simulation;
-- rely on Sparrow-V being installed for normal tests;
-- claim hardware execution.
+- modify Sparrow-V RTL;
+- copy Sparrow-V RTL into SparrowML;
+- commit files inside Sparrow-V;
+- invent unsupported ISA encodings;
+- silently patch Sparrow-V;
+- claim FPGA or physical-hardware execution.
 
-Use target contracts and configuration only.
+Temporary generated files may be placed in a documented ignored Sparrow-V build/output directory only if the existing interface requires it. Prefer an isolated temporary workspace or SparrowML-owned integration directory.
+
+## Repository Discovery
+
+Support these Sparrow-V discovery methods, in priority order:
+
+1. explicit `SPARROWV_ROOT` environment variable;
+2. target configuration value if repository-relative and portable;
+3. sibling repository fallback such as:
+
+```text
+../sparrow-v
+```
+
+Requirements:
+
+- resolve to an absolute path internally;
+- do not serialize the absolute path into deterministic artifacts;
+- verify the directory exists;
+- verify expected Sparrow-V contract files exist;
+- verify it is not the SparrowML repository;
+- produce a concise actionable error when missing.
+
+Add a diagnostic command such as:
+
+```text
+sparrowml sparrowv-doctor
+```
+
+It should report:
+
+- resolved checkout status;
+- compatibility status;
+- discovered simulator/tool availability;
+- supported dense target;
+- supported sparse target;
+- missing requirements;
+- no repository modifications.
 
 ## Relevant Files
 
@@ -91,724 +147,576 @@ Read first:
 - `docs/current_milestone.md`
 - `docs/architecture.md`
 - `docs/data_contracts.md`
-- `docs/experiment_policy.md`
-- `docs/results/phase2_int8_ptq.md`
-- `docs/results/phase3_sparse_2of4.md`
+- `docs/sparrow_v_export_contract.md`
+- `docs/results/phase4_sparrow_v_export.md`
 - `configs/targets/sparrow_v.yaml`
-- current quantization and sparsity artifact schemas;
-- current dense and sparse integer reference implementations.
+- Phase 4 compiler/export modules;
+- existing SparrowML target adapter skeleton and contracts.
 
-Inspect only directly relevant files after that.
+After resolving Sparrow-V, inspect only the minimum Sparrow-V files required to identify:
 
-Do not perform a broad Sparrow-V repository inspection.
+- supported execution commands;
+- expected input/program formats;
+- existing dense vector instruction path;
+- existing sparse vector instruction path;
+- result-output format;
+- available counters;
+- stable Make targets or scripts.
 
-## Supported Compiler Scope
+Do not perform a broad Sparrow-V audit.
 
-Support exactly these deployment graphs:
+Do not inspect unrelated RTL, ASIC-flow, synthesis, documentation, or historical experiment files.
 
-### Dense graph
+## Preflight Contract Audit
+
+Before implementing the adapter, produce a concise machine-readable compatibility record.
+
+It must identify:
+
+- Sparrow-V repository identity;
+- relevant interface or schema version, if present;
+- command used for dense execution;
+- command used for sparse execution;
+- required generated files;
+- accepted input formats;
+- output/result format;
+- available counters;
+- timeout behavior;
+- simulator dependencies;
+- whether existing interfaces can execute the Phase 4 model without RTL changes.
+
+Store this under generated Phase 5 artifacts, not as a speculative hand-written claim.
+
+If Sparrow-V does not expose a usable stable interface, stop with `STATUS: BLOCKED` and explain the smallest required human decision. Do not invent a new ISA or silently modify Sparrow-V.
+
+## Runtime Adapter
+
+Implement a bounded adapter under a structure such as:
 
 ```text
-Input[16, INT8]
-→ DenseLinear[16 → 4, INT8 weights, INT32 bias]
-→ OutputLogits[4, INT32 accumulators + per-channel scales]
-```
-
-### Sparse graph
-
-```text
-Input[16, INT8]
-→ SparseLinear2of4[
-    16 → 4,
-    compressed INT8 weights,
-    3-bit metadata,
-    INT32 bias
-  ]
-→ OutputLogits[4, INT32 accumulators + per-channel scales]
-```
-
-No hidden layers, activations, convolutions, dynamic shapes, branching, or arbitrary graphs.
-
-## SparrowML IR
-
-Define a small versioned intermediate representation.
-
-Preferred package structure:
-
-```text
-src/sparrowml/compiler/
+src/sparrowml/targets/sparrow_v/
 ├── __init__.py
-├── ir.py
+├── discovery.py
+├── compatibility.py
+├── adapter.py
+├── workspace.py
+├── commands.py
+├── execution.py
+├── parsing.py
 ├── validation.py
-├── lowering.py
-├── layout.py
-├── exporter.py
-├── manifests.py
-├── images.py
-└── hashes.py
+└── reports.py
 ```
 
-Adjust to match the existing repository structure.
+Adjust to match the existing scaffold.
 
-Do not build a generic compiler framework.
+The adapter must:
 
-## IR Requirements
+- accept one Phase 4 deployment package;
+- determine dense or sparse mode;
+- validate package and target compatibility;
+- prepare a deterministic execution workspace;
+- invoke the existing Sparrow-V interface;
+- capture stdout, stderr, exit status, and elapsed host time;
+- parse results into a typed SparrowML result object;
+- compare them with `expected_output.json`;
+- cleanly report success, mismatch, timeout, or tool failure.
 
-The IR must explicitly represent:
+Do not create a generalized remote-execution framework.
 
-### Model
+## Execution Workspace
 
-- format version;
-- model name;
-- execution mode:
-  - `dense_int8`;
-  - `sparse_2of4_int8`;
-- input tensor;
-- output tensor;
-- operators;
-- constants;
-- class names;
-- preprocessing version;
-- source artifact identity.
-
-### Tensor
-
-Each tensor must contain:
-
-- unique name;
-- shape;
-- element type;
-- role;
-- logical ordering;
-- storage layout;
-- byte size;
-- optional quantization metadata.
-
-Supported element types should be limited to:
+Use an isolated generated directory such as:
 
 ```text
-int8
-uint8
-int32
-float32
+artifacts/phase5_runtime/workspaces/dense/
+artifacts/phase5_runtime/workspaces/sparse/
 ```
 
-Only add another type if strictly necessary.
+or a temporary directory whose relevant outputs are copied into Phase 5 artifacts.
 
-### Quantization
+The workspace may contain:
 
-Represent:
-
-- input scale;
-- input zero point;
-- per-output-channel weight scales;
-- weight zero points;
-- accumulator type;
-- output reconstruction scales;
-- rounding policy;
-- clamping policy.
-
-### Operator
-
-Support exactly:
-
-```text
-DenseLinearInt8
-SparseLinear2of4Int8
-```
-
-Operators must record:
-
-- input tensor;
-- output tensor;
-- weight tensor or compressed-weight tensor;
-- bias tensor;
-- weight scales;
-- sparse metadata tensor where applicable;
-- feature count;
-- output count;
-- accumulation type.
-
-### Sparse operator
-
-For `SparseLinear2of4Int8`, also record:
-
-- group size `4`;
-- nonzero count `2`;
-- grouping axis;
-- group traversal order;
-- metadata encoding version;
-- compressed-weight ordering;
-- packed metadata byte ordering.
-
-## IR Serialization
-
-Provide deterministic machine-readable serialization.
-
-Preferred:
-
-```text
-JSON
-```
+- deployment package copy or links;
+- generated assembly or C source if required by Sparrow-V’s existing interface;
+- generated memory image;
+- build logs;
+- simulator stdout and stderr;
+- parsed result JSON.
 
 Requirements:
 
-- stable field ordering;
-- stable list ordering;
-- no timestamps inside determinism-sensitive payloads;
-- no absolute paths;
-- no non-deterministic identifiers;
-- explicit format version;
-- exact round-trip parse/serialize behavior.
+- no source files in Sparrow-V are overwritten;
+- no tracked Sparrow-V files are modified;
+- generated files are isolated and clearly named;
+- stale outputs are removed or rejected;
+- dense and sparse runs cannot collide;
+- workspace paths do not enter deterministic semantic result payloads.
 
-Require:
+## Program Generation
 
-```text
-serialize(parse(serialize(ir))) == serialize(ir)
-```
+Phase 4 emitted symbolic `program.json`.
 
-for canonical serialization.
+Translate the symbolic program into the existing Sparrow-V software or image interface.
 
-## IR Validation
+Allowed approaches, depending on Sparrow-V’s current stable workflow:
 
-Implement strict validation.
-
-Reject:
-
-- unsupported operators;
-- unsupported data types;
-- dynamic or missing shapes;
-- input feature count other than 16;
-- output count other than 4;
-- invalid quantization scales;
-- invalid zero points;
-- non-INT32 biases;
-- inconsistent tensor byte sizes;
-- sparse groups not equal to 2:4;
-- invalid sparse metadata;
-- compressed-weight count mismatches;
-- class-count mismatches;
-- missing preprocessing metadata;
-- absolute paths;
-- unsupported format versions.
-
-Validation errors must identify the offending field clearly.
-
-## Lowering
-
-Implement deterministic lowering from:
-
-### Phase 2 artifact
-
-```text
-artifacts/phase2_int8/quantized_model.json
-```
-
-to dense SparrowML IR.
-
-### Phase 3 artifact
-
-```text
-artifacts/phase3_sparse/sparse_quantized_model.json
-```
-
-to sparse SparrowML IR.
-
-The lowering must preserve:
-
-- input scale and zero point;
-- weight scales;
-- weight values;
-- sparse compressed values;
-- sparse metadata;
-- bias values;
-- feature ordering;
-- output ordering;
-- class ordering;
-- preprocessing version;
-- source artifact identity.
-
-Do not retrain, requantize, or reprune during lowering.
-
-## Target Configuration
-
-Use:
-
-```text
-configs/targets/sparrow_v.yaml
-```
-
-Extend it only as needed.
-
-The target configuration should describe deployment-facing limits and conventions, such as:
-
-- target name;
-- architecture version;
-- supported model modes;
-- supported element types;
-- vector width;
-- feature count;
-- output count;
-- scratchpad size;
-- endianness;
-- alignment;
-- base addresses or logical memory regions;
-- metadata encoding version;
-- instruction or command template version;
-- result layout.
-
-Do not encode machine-specific repository paths.
-
-Keep execution commands out of the core IR.
-
-## Memory Layout
-
-Define deterministic memory regions for exported packages.
-
-A reasonable logical layout is:
-
-```text
-input
-weights
-metadata
-bias
-scales
-output
-```
-
-For each region record:
-
-- name;
-- byte offset;
-- byte length;
-- alignment;
-- element type;
-- logical shape;
-- source tensor.
+- generate bare-metal assembly;
+- generate C using existing intrinsics or inline assembly;
+- generate an accepted instruction/data image;
+- populate an existing workload template through documented parameters.
 
 Requirements:
 
-- no overlaps;
-- deterministic ordering;
-- alignment respected;
-- total memory size reported;
-- total size fits target limits;
-- dense and sparse layouts both supported.
+- use existing documented instruction encodings or assembler support;
+- preserve feature, weight, metadata, bias, and output ordering;
+- use the correct dense `VDOT8` behavior;
+- use the correct sparse `VSDOT8` behavior;
+- use only supported load/store and scalar operations;
+- do not hand-invent undocumented opcodes;
+- generated program must be deterministic;
+- generated source or image must be retained in the Phase 5 evidence.
 
-Use a simple alignment policy such as four-byte alignment unless Sparrow-V’s existing contract requires another value.
+## Workload Semantics
 
-Do not invent a complex allocator.
+For the canonical exported sample, the program must:
 
-## Endianness and Integer Encoding
+1. load the 16 quantized input features;
+2. load dense or compressed sparse model data;
+3. execute four output-channel dot products;
+4. include the appropriate INT32 bias contribution;
+5. store or report four final INT32 accumulators;
+6. expose predicted class if supported;
+7. expose required counters;
+8. terminate through the existing Sparrow-V success mechanism.
 
-Define and document:
+If Sparrow-V cannot directly apply biases or reconstruct per-channel logits in hardware/software, the adapter may perform clearly documented host-side post-processing only where the Phase 4 contract expects it.
 
-- byte order;
-- signed INT8 encoding;
-- signed INT32 encoding;
-- float32 scale encoding if scales are emitted directly;
-- metadata byte packing;
-- padding bytes;
-- alignment padding.
+The following distinction must remain explicit:
 
-Preferred:
+- **RTL-produced values**
+- **runtime software-produced values**
+- **host-side reconstructed values**
+
+Do not label host-side calculations as RTL results.
+
+## Dense Execution
+
+Run the Phase 4 dense package through Sparrow-V’s dense vector path.
+
+Required validation:
+
+- four final accumulators exactly match Phase 4 dense expected accumulators;
+- output order matches class order;
+- prediction based on reconstructed logits matches the SparrowML reference;
+- no simulator assertion or architectural trap occurs;
+- dense instruction and load counters are recorded where available.
+
+Reference canonical dense expected accumulators from Phase 4:
 
 ```text
-little-endian
-two's-complement integers
-IEEE-754 float32 scales
+[39603, -17389, -1218, -26014]
 ```
 
-Validate all emitted values before encoding.
+Do not hardcode these as the implementation oracle. Load them from the package.
 
-## Deployment Package
+## Sparse Execution
 
-Generate one self-contained deployment directory per mode.
+Run the Phase 4 sparse package through Sparrow-V’s compressed 2:4 path.
 
-Preferred paths:
+Required validation:
+
+- compressed weights are consumed in defined order;
+- metadata is decoded using the existing Sparrow-V encoding;
+- four final accumulators exactly match Phase 4 sparse expected accumulators;
+- prediction matches the SparrowML compressed sparse reference;
+- no invalid metadata is emitted;
+- no simulator assertion or architectural trap occurs;
+- sparse instruction, executed-multiply, and skipped-multiply counters are recorded where available.
+
+Reference canonical sparse expected accumulators from Phase 4:
 
 ```text
-artifacts/phase4_export/dense/
-artifacts/phase4_export/sparse/
+[27952, -9483, -738, -19017]
 ```
 
-Each package must include at least:
+Load the oracle from the package rather than hardcoding it.
+
+## Result Contract
+
+Define a versioned result schema such as:
 
 ```text
-manifest.json
-model_ir.json
-memory_map.json
-model_data.bin
-input_data.bin
-expected_output.json
-export_report.json
-README.md
+sparrowml_sparrowv_runtime_result_v1
 ```
 
-Additional small files may be added where useful.
+Each run result must record:
 
-## Manifest
-
-The deployment manifest must include:
-
-- package format version;
-- target name;
-- model name;
-- execution mode;
-- source artifact hashes;
-- model IR hash;
-- feature count;
-- output count;
-- class names;
-- preprocessing version;
-- input quantization;
-- weight quantization;
-- accumulator type;
-- memory-region summary;
-- binary filenames;
-- expected-output filename;
-- export validation status;
-- required future runtime interface version.
-
-Do not include local absolute paths.
-
-## Model Data Binary
-
-Generate a deterministic binary containing model constants.
-
-For dense mode, include:
-
-- dense INT8 weights;
-- INT32 biases;
-- per-channel scales;
-- any required target metadata.
-
-For sparse mode, include:
-
-- compressed INT8 weights;
-- packed sparse metadata;
-- INT32 biases;
-- per-channel scales;
-- any required target metadata.
-
-The exact ordering must be defined in `memory_map.json`.
-
-Do not silently include duplicated or unused data.
-
-## Input Data
-
-Export a bounded deterministic input set.
-
-Preferred:
-
-- one canonical test sample for single-run bring-up;
-- optionally all 76 test samples in a separate batch-oriented artifact.
-
-At minimum include:
-
+- mode;
+- package identity and hash;
+- Sparrow-V compatibility identity;
 - sample ID;
-- quantized INT8 feature vector;
-- expected label;
-- class name;
-- input scale;
-- input zero point.
-
-Use the same preprocessing and quantization contract as Phase 2/3.
-
-Do not create new random inputs.
-
-## Expected Outputs
-
-Use SparrowML’s reference implementations to generate expected outputs.
-
-For each exported sample, include:
-
-- sample ID;
-- expected INT32 accumulators;
+- simulator command in normalized form;
+- exit status;
+- termination reason;
+- raw output locations;
+- parsed accumulators;
 - reconstructed logits;
 - predicted class ID;
 - predicted class name;
-- expected label;
-- correctness;
-- execution mode.
+- expected accumulators;
+- exact accumulator-match status;
+- expected prediction;
+- prediction-match status;
+- counters;
+- validation status;
+- failure diagnostics.
 
-For sparse mode, expected outputs must come from the explicit compressed sparse reference path.
+Do not include nonportable absolute paths in the canonical semantic result.
 
-For dense mode, expected outputs must come from the dense integer reference path.
+Host-specific diagnostic logs may contain local paths but should not be part of determinism hashes.
 
-Do not derive expected outputs from FP32 inference.
+## Counters
 
-## Export Validation
+Parse only counters actually exposed by Sparrow-V.
 
-After export, reload the generated package and verify:
+Desired counters include:
 
-1. manifest parses;
-2. IR parses;
-3. memory map parses;
-4. binary lengths match declarations;
-5. binary regions do not overlap;
-6. all values decode correctly;
-7. decoded tensors equal source tensors exactly;
-8. expected outputs reproduce from decoded package contents;
-9. dense export matches Phase 2 reference;
-10. sparse export matches Phase 3 compressed reference;
-11. hashes match;
-12. repeated export is byte-for-byte deterministic.
+- total cycles;
+- retired instructions;
+- vector loads;
+- vector stores;
+- dense dot-product instructions;
+- sparse dot-product instructions;
+- executed multiplications;
+- skipped multiplications;
+- stale/wrong-path responses if relevant;
+- traps or errors.
 
-Require deterministic SHA-256 evidence for at least:
+Requirements:
 
-- `model_ir.json`;
-- `manifest.json`;
-- `memory_map.json`;
-- `model_data.bin`;
-- `input_data.bin`;
-- `expected_output.json`.
+- distinguish measured counters from derived counters;
+- label missing counters as unavailable rather than inventing values;
+- record units;
+- preserve raw counter values;
+- validate nonnegative integer fields;
+- check obvious consistency relationships where applicable.
 
-## Instruction or Command Representation
-
-Define a minimal future-runtime command description, but do not execute it.
-
-Preferred output:
+Examples:
 
 ```text
-program.json
+dense executed multiplications = 64
+sparse executed multiplications = 32
+sparse skipped multiplications = 32
 ```
 
-or:
+These may be derived only if the RTL does not directly expose them, and must then be labelled `derived`.
+
+## Correctness Gates
+
+For both dense and sparse execution:
+
+- simulator exits successfully;
+- no assertion failure;
+- no unexpected trap;
+- exactly four accumulators are parsed;
+- accumulators exactly match package expectations;
+- predicted class matches;
+- output ordering matches;
+- package hash matches the executed package;
+- result schema validates.
+
+The milestone must fail if an accumulator differs by even one integer value.
+
+Do not use numerical tolerance for INT32 accumulator comparison.
+
+Reconstructed FP32 logits may use a documented small tolerance because scales are serialized as float32, but prediction must match exactly.
+
+## Cross-Mode Report
+
+Generate a combined report comparing:
+
+- dense expected versus Sparrow-V accumulators;
+- sparse expected versus Sparrow-V accumulators;
+- dense and sparse predictions;
+- dense and sparse cycles;
+- dense and sparse retired instructions;
+- dense and sparse memory/load counts;
+- dense and sparse dot-product counts;
+- executed and skipped multiplications;
+- model storage;
+- package sizes;
+- arithmetic reduction;
+- observed runtime differences.
+
+Do not claim speedup unless the cycle measurements are comparable and correctly collected.
+
+If dense and sparse both take the same number of cycles, report that directly and explain that arithmetic reduction did not translate into latency reduction for this workload.
+
+## Determinism
+
+Distinguish two forms of determinism.
+
+### Semantic determinism
+
+Repeated runs must produce identical:
+
+- accumulators;
+- predictions;
+- parsed architectural counters, assuming deterministic RTL;
+- package identities;
+- validation results.
+
+### Host-log determinism
+
+Do not require identical:
+
+- elapsed wall-clock time;
+- temporary paths;
+- simulator build timestamps;
+- tool-generated incidental logs.
+
+Canonical result hashes must exclude nondeterministic host diagnostics.
+
+Run each mode at least twice and record semantic determinism evidence.
+
+## Configuration
+
+Add a configuration such as:
 
 ```text
-commands.json
+configs/experiments/sparrow_v_runtime.yaml
 ```
 
-It should describe a bounded abstract sequence such as:
+Include:
 
-### Dense
+- dense package path;
+- sparse package path;
+- target configuration;
+- repository discovery policy;
+- dense execution target;
+- sparse execution target;
+- timeout;
+- workspace root;
+- retained-log policy;
+- expected result schema version;
+- required versus optional counters;
+- semantic determinism repeat count.
 
-```text
-load input
-load dense weights
-load bias/scales
-execute dense dot products
-store outputs
-```
-
-### Sparse
-
-```text
-load input
-load compressed weights
-load metadata
-load bias/scales
-execute sparse dot products
-store outputs
-```
-
-Represent this as target-facing commands or symbolic operations, not raw machine code unless Sparrow-V already exposes a stable documented encoding in the target contract.
-
-Do not reverse-engineer or invent undocumented ISA encodings.
-
-The following milestone will connect this representation to actual Sparrow-V execution.
+Avoid hardcoded machine-specific absolute paths.
 
 ## CLI
 
 Add bounded commands such as:
 
 ```text
-sparrowml lower-ir
-sparrowml validate-ir
-sparrowml export-sparrowv
-sparrowml validate-export
-sparrowml run-export-baseline
+sparrowml sparrowv-doctor
+sparrowml prepare-sparrowv-run
+sparrowml run-sparrowv
+sparrowml validate-sparrowv-result
+sparrowml run-sparrowv-baseline
 ```
 
 Exact names may follow current conventions.
 
-### `lower-ir`
+### `sparrowv-doctor`
 
-- load Phase 2 or Phase 3 artifact;
-- lower to canonical SparrowML IR;
-- validate;
-- emit IR.
+- resolve checkout;
+- inspect compatibility;
+- verify required tools and targets;
+- perform no build or execution unless explicitly requested.
 
-### `validate-ir`
+### `prepare-sparrowv-run`
 
-- validate one IR file;
-- print concise model/operator/tensor summary;
-- return nonzero on failure.
+- validate one package;
+- generate isolated workspace and program/image inputs;
+- do not execute simulation.
 
-### `export-sparrowv`
+### `run-sparrowv`
 
-- accept dense or sparse mode;
-- create deployment package;
-- emit manifest, binaries, memory map, expected outputs, and report.
+- execute one selected mode;
+- capture logs;
+- parse result;
+- validate against package oracle.
 
-### `validate-export`
+### `validate-sparrowv-result`
 
-- reload package;
-- decode all data;
-- rerun reference inference;
-- verify hashes and equivalence.
+- reload saved result and evidence;
+- revalidate schema, package identity, accumulators, predictions, and counters.
 
-### `run-export-baseline`
+### `run-sparrowv-baseline`
 
-- export and validate both dense and sparse packages in one deterministic command.
+- ensure Phase 4 packages exist;
+- run doctor;
+- execute dense twice;
+- execute sparse twice;
+- validate semantic determinism;
+- write combined report.
 
 Use proper exit codes.
-
-## Configuration
-
-Add:
-
-```text
-configs/experiments/sparrow_v_export.yaml
-```
-
-Include:
-
-- source dense artifact;
-- source sparse artifact;
-- target config path;
-- selected input sample IDs;
-- output directory;
-- alignment;
-- byte order;
-- scale serialization type;
-- package format version;
-- IR format version;
-- validation policy.
-
-Avoid absolute paths.
 
 ## Generated Artifacts
 
 Use:
 
 ```text
-artifacts/phase4_export/
+artifacts/phase5_runtime/
 ```
-
-Generated outputs should remain ignored unless repository policy explicitly tracks small golden schemas.
-
-Do not overwrite Phase 1–3 artifacts.
 
 At minimum generate:
 
 ```text
-artifacts/phase4_export/dense/
-artifacts/phase4_export/sparse/
-artifacts/phase4_export/export_summary.json
-artifacts/phase4_export/summary.md
-artifacts/phase4_export/determinism.json
+artifacts/phase5_runtime/compatibility.json
+artifacts/phase5_runtime/dense/result.json
+artifacts/phase5_runtime/dense/stdout.log
+artifacts/phase5_runtime/dense/stderr.log
+artifacts/phase5_runtime/dense/generated_program.*
+artifacts/phase5_runtime/sparse/result.json
+artifacts/phase5_runtime/sparse/stdout.log
+artifacts/phase5_runtime/sparse/stderr.log
+artifacts/phase5_runtime/sparse/generated_program.*
+artifacts/phase5_runtime/cross_mode_report.json
+artifacts/phase5_runtime/summary.md
+artifacts/phase5_runtime/determinism.json
 ```
+
+Exact generated program extension depends on the existing Sparrow-V interface.
+
+Generated artifacts should remain ignored.
+
+Do not overwrite Phase 1–4 artifacts.
 
 ## Tests
 
 Add focused tests for:
 
-### IR
+### Discovery
 
-- dense IR construction;
-- sparse IR construction;
-- canonical serialization;
-- parse/serialize round trip;
-- stable ordering;
-- format version;
-- unsupported operator rejection;
-- invalid shape rejection;
-- invalid quantization rejection;
-- absolute-path rejection.
+- explicit environment variable;
+- sibling fallback;
+- missing checkout;
+- wrong repository;
+- required-file detection;
+- no absolute paths serialized.
 
-### Lowering
+### Compatibility
 
-- Phase 2 dense artifact lowers correctly;
-- Phase 3 sparse artifact lowers correctly;
-- values preserved exactly;
-- class ordering preserved;
-- preprocessing version preserved;
-- source artifact hash recorded.
+- compatible interface;
+- missing target;
+- unsupported interface version;
+- missing simulator;
+- available-counter discovery;
+- clear blocker diagnostics.
 
-### Layout
+Use temporary fake repositories for unit tests.
 
-- deterministic region order;
-- correct offsets;
-- alignment;
-- no overlap;
-- correct total size;
-- dense and sparse size differences;
-- target-capacity rejection.
+### Program generation
 
-### Binary encoding
+- dense program ordering;
+- sparse program ordering;
+- input ordering;
+- weight ordering;
+- metadata ordering;
+- bias ordering;
+- deterministic generated source;
+- no invented unsupported operation.
 
-- INT8 round trip;
-- INT32 little-endian round trip;
-- float32 scale round trip;
-- metadata round trip;
-- signed-value preservation;
-- invalid range rejection.
+### Workspace
 
-### Export
+- isolated dense/sparse paths;
+- stale-output cleanup;
+- no source overwrite;
+- no tracked repository modification;
+- safe subprocess working directory.
 
-- dense package generation;
-- sparse package generation;
-- required files exist;
-- manifest fields;
-- memory map consistency;
-- decoded tensors equal source tensors;
-- no absolute paths;
-- deterministic hashes.
+### Execution
 
-### Expected outputs
+- command construction;
+- timeout handling;
+- nonzero exit handling;
+- stdout/stderr capture;
+- missing-output handling.
 
-- dense exported package reproduces dense integer reference;
-- sparse exported package reproduces compressed sparse reference;
-- predictions and accumulators match exactly;
-- sample IDs and labels preserved.
+Mock subprocess execution for ordinary unit tests.
 
-### CLI
+### Parsing
 
-- commands parse;
-- dense export smoke run;
-- sparse export smoke run;
-- missing source artifact fails clearly;
-- unsupported mode fails clearly;
-- corrupt package validation fails clearly.
+- valid dense result;
+- valid sparse result;
+- negative accumulators;
+- exactly four outputs;
+- malformed output;
+- missing counters;
+- duplicate fields;
+- unexpected traps.
+
+### Validation
+
+- exact accumulator match;
+- one-value mismatch failure;
+- prediction mismatch;
+- package-hash mismatch;
+- result-schema validation;
+- reconstructed-logit tolerance;
+- measured versus derived counters.
+
+### Integration
+
+When a real compatible Sparrow-V checkout is available:
+
+- dense real simulation;
+- sparse real simulation;
+- exact reference equivalence;
+- semantic repeat determinism;
+- no Sparrow-V tracked-file changes.
+
+Mark real cross-repository integration tests separately so normal unit tests remain runnable without Sparrow-V.
 
 Tests must not:
 
 - require internet;
 - require GPU;
-- require Sparrow-V checkout;
-- invoke Sparrow-V;
 - modify Sparrow-V;
-- retrain or reprune models repeatedly.
+- commit or push;
+- rerun model training;
+- rerun pruning;
+- perform synthesis or ASIC flows.
 
 ## Make Targets
 
 Add stable targets such as:
 
 ```text
-lower-ir
-validate-ir
-export-sparrowv-dense
-export-sparrowv-sparse
-validate-export
-run-export-baseline
-test-phase4
+sparrowv-doctor
+prepare-sparrowv-dense
+prepare-sparrowv-sparse
+run-sparrowv-dense
+run-sparrowv-sparse
+run-sparrowv-baseline
+test-phase5
+test-phase5-integration
 ```
 
-Update:
+Update `make help`.
+
+Expected behavior:
 
 ```text
-make help
+make test-phase5
 ```
 
-`make test-phase4` must run focused Phase 4 tests only.
+runs offline unit tests without requiring Sparrow-V.
 
-`make run-export-baseline` must export and validate both modes.
+```text
+make test-phase5-integration
+```
 
-If prerequisite artifacts are missing, fail clearly or regenerate them once using existing stable targets.
+requires a compatible local Sparrow-V checkout and executes real simulation.
 
-Do not repeatedly rerun Phase 1–3 training during unrelated tests.
+```text
+make run-sparrowv-baseline
+```
+
+runs the complete dense/sparse integration workflow.
 
 ## Documentation
 
@@ -820,30 +728,29 @@ Update or add:
 - `docs/data_contracts.md`;
 - `docs/experiment_policy.md`;
 - `docs/codex_context.md`;
-- one Phase 4 results document;
-- one deployment-package contract document if useful.
+- Phase 5 runtime contract;
+- Phase 5 result documentation.
 
-Suggested files:
+Suggested:
 
 ```text
-docs/results/phase4_sparrow_v_export.md
-docs/sparrow_v_export_contract.md
+docs/sparrow_v_runtime_contract.md
+docs/results/phase5_sparrow_v_runtime.md
 ```
 
 Document:
 
-- supported graphs;
-- IR schema;
-- tensor/operator representation;
-- quantization metadata;
-- sparse metadata;
-- lowering rules;
-- memory layout;
-- binary encoding;
-- endianness;
-- deployment package contents;
-- expected-output generation;
-- determinism;
+- repository discovery;
+- compatibility checks;
+- existing Sparrow-V interfaces used;
+- generated program format;
+- workspace policy;
+- command invocation;
+- parsing contract;
+- result schema;
+- measured versus derived counters;
+- exact correctness gates;
+- determinism policy;
 - limitations;
 - reproduction commands.
 
@@ -851,34 +758,34 @@ Keep `docs/codex_context.md` concise.
 
 ## README Status
 
-Update README status to:
+Update README status only after real simulation succeeds:
 
 ```text
-Phase 4 SparrowML IR and Sparrow-V artifact export implemented
+Phase 5 Sparrow-V simulation and RTL/reference validation implemented
 ```
 
 Do not claim:
 
-- Sparrow-V execution;
-- RTL validation;
-- measured hardware cycles;
-- hardware speedup;
-- compiler support for arbitrary models;
+- physical hardware execution;
+- FPGA execution;
+- ASIC timing or power;
+- broad model support;
+- multi-layer compilation;
 - real-world accuracy;
-- full ISA code generation.
+- hardware speedup unless measured cycles support it.
 
 ## Existing Behavior Preservation
 
 Preserve:
 
-- Phase 1 FP32 workflow;
-- Phase 2 INT8 workflow;
-- Phase 3 sparse workflow;
+- Phase 1 FP32 baseline;
+- Phase 2 INT8 quantization;
+- Phase 3 structured sparsity;
+- Phase 4 IR and export;
 - all existing CLI commands;
 - all existing tests;
-- artifact contracts;
-- repository-local workflow;
-- Sparrow-V boundary.
+- deterministic artifacts;
+- repository boundary.
 
 Do not modify Sparrow-V.
 
@@ -886,24 +793,22 @@ Do not modify Sparrow-V.
 
 Do not implement:
 
-- Sparrow-V simulation;
-- subprocess execution of Sparrow-V;
-- hardware result parsing;
-- cycle or instruction collection;
-- new Sparrow-V instructions;
-- RTL modifications;
-- arbitrary graph compilation;
-- hidden layers;
+- RTL changes;
+- new instructions;
+- assembler changes unless a pre-existing documented extension point is explicitly intended for generated workloads;
+- FPGA execution;
+- synthesis;
+- OpenLane/OpenROAD;
+- power analysis;
 - multi-layer models;
-- ONNX;
-- TinyNPU export;
-- runtime scheduling;
-- dynamic memory allocation;
+- hidden activations;
+- compiler optimization;
 - hardware-aware pruning;
 - target selection;
+- TinyNPU integration;
 - real dataset work;
 - research experiments;
-- GUI or dashboards.
+- GUI or cloud execution.
 
 ## Validation
 
@@ -918,99 +823,101 @@ make test-phase1
 make test-phase2
 make test-phase3
 make test-phase4
+make test-phase5
 make smoke
 make check
 make docs-check
 git diff --check
 ```
 
-Also run once:
+Run real integration once:
 
 ```text
-make run-export-baseline
+make test-phase5-integration
+make run-sparrowv-baseline
 ```
 
-If prerequisite artifacts are missing, regenerate them once:
+Verify Sparrow-V remains unchanged:
 
 ```text
-make run-fp32-baseline
-make run-int8-baseline
-make run-sparse-baseline
+git -C "$SPARROWV_ROOT" status --short
 ```
 
-Do not repeatedly retrain during unrelated validation.
+If `SPARROWV_ROOT` is not set, use the adapter-resolved checkout path.
+
+Do not run Sparrow-V synthesis, FPGA, or ASIC targets.
 
 ## Acceptance Criteria
 
 The milestone is complete only when:
 
-1. A versioned SparrowML IR exists.
-2. The IR supports dense INT8 linear inference.
-3. The IR supports sparse 2:4 INT8 linear inference.
-4. Tensors have explicit names, shapes, types, roles, and layouts.
-5. Quantization parameters are explicit.
-6. Sparse metadata semantics are explicit.
-7. Operators are explicitly represented.
-8. Canonical deterministic JSON serialization exists.
-9. Parse/serialize round-trip is stable.
-10. Strict IR validation exists.
-11. Unsupported operators are rejected.
-12. Invalid shapes are rejected.
-13. Invalid scales and zero points are rejected.
-14. Absolute paths are rejected.
-15. Phase 2 artifacts lower to dense IR.
-16. Phase 3 artifacts lower to sparse IR.
-17. Lowering preserves all integer tensor values exactly.
-18. Lowering preserves class ordering.
-19. Lowering preserves preprocessing version.
-20. Target configuration is explicit and versioned.
-21. A deterministic memory-layout planner exists.
-22. Memory regions are aligned.
-23. Memory regions do not overlap.
-24. Total package size is reported.
-25. Target capacity is validated.
-26. Endianness is documented.
-27. INT8 encoding is validated.
-28. INT32 encoding is validated.
-29. Scale encoding is validated.
-30. Sparse metadata encoding is validated.
-31. Dense deployment package is generated.
-32. Sparse deployment package is generated.
-33. Each package contains a manifest.
-34. Each package contains canonical IR.
-35. Each package contains a memory map.
-36. Each package contains model binary data.
-37. Each package contains input data.
-38. Each package contains expected outputs.
-39. Each package contains a human-readable README.
-40. Model binary decodes exactly.
-41. Input binary decodes exactly.
-42. Dense decoded values match Phase 2.
-43. Sparse decoded values match Phase 3.
-44. Dense expected outputs match dense integer reference.
-45. Sparse expected outputs match compressed sparse reference.
-46. Accumulators match exactly.
-47. Predicted classes match exactly.
-48. Hashes are recorded.
-49. Repeated export is byte-for-byte deterministic.
-50. No timestamps break deterministic hashes.
-51. Future-runtime commands are represented symbolically.
-52. No undocumented raw ISA encoding is invented.
-53. One command exports and validates both modes.
-54. Phase 1 remains passing.
-55. Phase 2 remains passing.
-56. Phase 3 remains passing.
-57. Phase 4 focused tests pass.
-58. Tests require no internet.
-59. Tests require no GPU.
-60. Tests require no Sparrow-V checkout.
-61. Sparrow-V is not executed.
-62. Sparrow-V is not modified.
-63. Documentation matches implementation.
-64. README status is accurate.
-65. General repository checks pass.
-66. Documentation checks pass.
-67. `git diff --check` passes.
+1. Sparrow-V checkout discovery exists.
+2. `SPARROWV_ROOT` is supported.
+3. Sibling checkout fallback is supported.
+4. Missing checkout errors are actionable.
+5. A compatibility audit exists.
+6. Dense execution interface is identified.
+7. Sparse execution interface is identified.
+8. Required tools are checked.
+9. Existing Sparrow-V interfaces are used.
+10. No unsupported ISA encoding is invented.
+11. A versioned runtime-result schema exists.
+12. Dense Phase 4 package can be prepared for execution.
+13. Sparse Phase 4 package can be prepared for execution.
+14. Workspaces are isolated.
+15. Sparrow-V source files are not overwritten.
+16. Generated dense program/image is deterministic.
+17. Generated sparse program/image is deterministic.
+18. Dense simulation executes successfully.
+19. Sparse simulation executes successfully.
+20. Simulator stdout is captured.
+21. Simulator stderr is captured.
+22. Exit status is captured.
+23. Timeouts are handled.
+24. Unexpected traps are rejected.
+25. Assertion failures are rejected.
+26. Four dense accumulators are parsed.
+27. Four sparse accumulators are parsed.
+28. Dense accumulators exactly match the Phase 4 oracle.
+29. Sparse accumulators exactly match the Phase 4 oracle.
+30. Dense prediction matches.
+31. Sparse prediction matches.
+32. Output class ordering is preserved.
+33. Package hashes are verified.
+34. Result schemas validate.
+35. Available architectural counters are parsed.
+36. Missing counters are labelled unavailable.
+37. Derived counters are labelled derived.
+38. Measured counters are labelled measured.
+39. Dense cycles are reported if exposed.
+40. Sparse cycles are reported if exposed.
+41. Retired instructions are reported if exposed.
+42. Dense/sparse vector operation counts are reported.
+43. Executed/skipped multiplication counts are reported or carefully derived.
+44. Cross-mode report is generated.
+45. No unsupported speedup claim is made.
+46. Dense semantic repeat run is deterministic.
+47. Sparse semantic repeat run is deterministic.
+48. Nondeterministic host diagnostics are excluded from semantic hashes.
+49. Real integration tests are separated from offline tests.
+50. Offline Phase 5 tests do not require Sparrow-V.
+51. Integration tests require no internet.
+52. Integration tests require no GPU.
+53. Phase 1 remains passing.
+54. Phase 2 remains passing.
+55. Phase 3 remains passing.
+56. Phase 4 remains passing.
+57. Phase 5 unit tests pass.
+58. Phase 5 real integration tests pass.
+59. General repository checks pass.
+60. Documentation checks pass.
+61. `git diff --check` passes.
+62. Sparrow-V tracked working tree remains unchanged.
+63. Sparrow-V RTL is not modified.
+64. SparrowML does not commit inside Sparrow-V.
+65. Documentation matches implementation.
+66. README status is accurate.
+67. One command reproduces both execution modes.
 68. No commit or push occurs.
 69. `docs/codex_milestone_result.md` is finalized.
 
@@ -1018,14 +925,24 @@ The milestone is complete only when:
 
 Stop for human review only if:
 
-- Phase 2 or Phase 3 source artifacts cannot be loaded;
-- the existing Sparrow-V target contract lacks enough stable information to define export layouts without inventing unsupported behavior;
-- source artifact schemas are internally inconsistent;
-- exported values cannot reproduce current integer reference outputs;
-- target memory limits cannot hold the current model;
-- a major Phase 1–3 correctness defect is discovered.
+- no compatible Sparrow-V checkout can be found;
+- required simulator tools are unavailable and cannot be installed;
+- Sparrow-V lacks an existing dense or sparse execution path for this model;
+- Sparrow-V’s current software interface requires a source-level change that would violate the repository boundary;
+- Phase 4 package semantics conflict with the real Sparrow-V ISA or runtime;
+- Sparrow-V produces results that cannot be reconciled with the documented instruction semantics;
+- a major Phase 1–4 correctness defect is discovered.
 
-Ordinary schema design, layout bugs, serialization issues, hash mismatches, test failures, and documentation work are not stop conditions.
+If a minimal non-RTL Sparrow-V harness addition appears necessary, stop and describe:
+
+- the exact missing interface;
+- the smallest proposed change;
+- why it belongs in Sparrow-V rather than SparrowML;
+- whether it changes architectural behavior.
+
+Do not make that change automatically.
+
+Ordinary adapter bugs, parser bugs, command errors, timeout handling, counter omissions, test failures, and documentation work are not stop conditions.
 
 ## Token-Efficiency Instructions
 
@@ -1033,15 +950,16 @@ Follow `AGENTS.md`.
 
 In particular:
 
-- read compact context and milestone first;
-- inspect only compiler, artifact, quantization, sparsity, and target-contract files;
-- do not inspect or modify Sparrow-V RTL;
-- support only the two current linear model modes;
-- do not build a general graph compiler;
-- run focused Phase 4 tests during development;
+- read compact SparrowML context first;
+- inspect only the minimum Sparrow-V interface files;
+- do not audit RTL broadly;
+- do not inspect synthesis or ASIC flows;
+- support only the current dense and sparse linear packages;
+- use offline mocks for iterative unit testing;
+- run real simulation only when focused integration is ready;
 - run aggregate checks once;
-- reuse Phase 2 and Phase 3 artifacts;
-- keep generated documentation and result output concise.
+- avoid repeated rebuilds where cached Sparrow-V outputs are valid;
+- keep the result file concise.
 
 ## Result File
 
@@ -1059,40 +977,42 @@ Finalize with:
 STATUS: COMPLETE
 ```
 
-only if all required work and validation pass.
+only if real dense and sparse Sparrow-V simulation succeeds and all required correctness gates pass.
 
 Include:
 
-- supported IR operators;
-- IR and package format versions;
-- tensor and operator summary;
-- dense and sparse lowering results;
-- memory-region layouts and total sizes;
-- binary encoding conventions;
-- exported sample IDs;
-- dense expected accumulators and prediction;
-- sparse expected accumulators and prediction;
-- exact reference-equivalence results;
-- generated files;
-- deterministic hashes;
-- exact commands and outcomes;
-- changed files;
+- resolved Sparrow-V compatibility identity;
+- existing execution interfaces used;
+- generated program/image format;
+- dense simulator command and result;
+- sparse simulator command and result;
+- dense expected and observed accumulators;
+- sparse expected and observed accumulators;
+- exact-match status;
+- predictions;
+- measured counters;
+- derived counters;
+- unavailable counters;
+- cycle and instruction comparison;
+- semantic determinism evidence;
+- generated artifact paths;
+- exact validation commands and outcomes;
+- changed SparrowML files;
+- confirmation that Sparrow-V working tree remained unchanged;
 - remaining limitations;
 - next recommended milestone;
-- confirmation that Sparrow-V was not executed;
-- confirmation that Sparrow-V was not modified;
 - confirmation that no commit or push occurred.
 
-Use `STATUS: FAILED` if required work or checks remain incomplete.
+Use `STATUS: FAILED` if implementation is incomplete or correctness checks fail.
 
-Use `STATUS: BLOCKED` only for a genuine target-contract or architectural blocker.
+Use `STATUS: BLOCKED` only for a genuine Sparrow-V interface, toolchain, or repository-boundary blocker.
 
 ## Next Milestone
 
 The expected next milestone is:
 
 ```text
-Sparrow-V runtime adapter, simulator execution, and RTL/reference result validation
+Multi-layer INT8 model, intermediate activation quantization, and multi-operator compilation
 ```
 
 Do not implement it during this milestone.
