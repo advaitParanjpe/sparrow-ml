@@ -23,3 +23,6 @@ Read [AGENTS.md](AGENTS.md), [context](docs/codex_context.md), and the [current 
 ## Data and artifacts
 
 See [data contracts](docs/data_contracts.md), [data policy](data/README.md), and [artifact policy](artifacts/README.md). Do not commit raw downloads, checkpoints, generated deployments, secrets, or API keys unless a documented exception applies.
+# WISDM Phase 8
+
+`make run-wisdm-phase8b` exports and reload-validates the held-out WISDM model package. `make run-wisdm-phase8c` runs the bounded selected test samples through Sparrow-V; `make run-wisdm-final` produces the consolidated local report.

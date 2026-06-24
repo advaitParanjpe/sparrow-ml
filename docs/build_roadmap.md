@@ -12,3 +12,6 @@
 | 7 | Multi-layer Sparrow-V RTL/reference validation (implemented) | Monolithic scheduler, hardware ReLU, sparse MLP | Exact fc1/hidden/fc2 validation and two-run semantic determinism |
 | 8 | Sparrow-V/TinyNPU comparison | Tight target coupling | Identical-workload comparison |
 | 9 | Research-style exploration after practical completion | Replacing proven path | Reproducible study protocol |
+# Phase 8
+
+Phase 8A prepares subject-held-out WISDM windows. Phase 8B exports the measured model and validates package reload. Phase 8C executes a bounded held-out selection through Sparrow-V.

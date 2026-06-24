@@ -15,3 +15,6 @@ Phase 5 runs only Sparrow-V's documented external sensor-workload RTL interface.
 For Phase 6, FP32 training and checkpoint selection use train/validation/test fixture separation, fixed CPU seeds, and validation loss only. Input and hidden activation calibration use standardized training data only. Hidden ReLU values are reconstructed from the first integer accumulator, then rounded with NumPy ties-to-even and clamped to signed INT8 `[0,127]`. Quality metrics remain synthetic-fixture measurements; package validation is exact software-reference evidence, not Sparrow-V or hardware execution.
 
 Phase 7 uses the documented Sparrow-V external `16→4` workload five times per model execution. Its counters are simulated architectural counters per partition; a summed fc1 cycle count is labelled a partitioned simulation total and is not an optimized end-to-end latency claim. ReLU, requantization, and full INT32 bias reconstruction are host post-processing. Exact integer equality is required for both accumulator stages, hidden codes, and prediction.
+# WISDM real-data reporting
+
+Phase 8 quality values are measured on a held-out subject split. RTL evidence validates integer-reference equivalence only; it is not a claim that every activity prediction is correct or a monolithic latency measurement.

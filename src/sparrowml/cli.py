@@ -29,6 +29,8 @@ from .targets.sparrow_v.discovery import discover
 from .targets.sparrow_v.runtime import prepare as prepare_sparrowv, run as run_sparrowv, validate_result as validate_sparrowv_result
 from .targets.sparrow_v.multilayer import prepare as prepare_sparrowv_mlp, run as run_sparrowv_mlp, semantic_view as multilayer_semantic_view, validate_result as validate_sparrowv_mlp_result
 from .targets.sparrow_v.reports import write_baseline_report
+from .data.wisdm import doctor as wisdm_doctor, prepare as prepare_wisdm
+from .wisdm_pipeline import train as train_wisdm, quantize_evaluate as evaluate_wisdm, run as run_wisdm, select_rtl_samples, run_phase8c, run_final
 
 
 def _doctor() -> int:
@@ -149,6 +151,17 @@ def _run_sparrowv_mlp_baseline() -> int:
     if not deterministic: raise ValueError("multi-layer Sparrow-V semantic determinism failed")
     (target / "summary.md").write_text("# Phase 7 multi-layer Sparrow-V runtime\n\nFour fixed 16→4 RTL fc1 partitions and one fc2 RTL run passed exact integer-reference validation twice. ReLU and requantization are host-reconstructed post-processing.\n", encoding="utf-8")
     print("multi-layer Sparrow-V baseline: passed twice with matching semantic hashes"); return 0
+
+
+def _wisdm_doctor(root: str | None) -> int:
+    print(json.dumps(wisdm_doctor(root), indent=2, sort_keys=True))
+    return 0
+
+
+def _prepare_wisdm(root: str | None) -> int:
+    result = prepare_wisdm(root, load_project_config().root / "artifacts/phase8_wisdm/phase8a")
+    print(f"WISDM prepared: {len(result['windows'])} subject-held-out windows")
+    return 0
 
 
 def _phase1_config(path: str | None) -> tuple[dict[str, object], Path]:
@@ -329,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
         phase7 = subparsers.add_parser(name); phase7.add_argument("--package"); phase7.add_argument("--output")
     phase7_validate = subparsers.add_parser("validate-sparrowv-mlp"); phase7_validate.add_argument("package"); phase7_validate.add_argument("result")
     subparsers.add_parser("run-sparrowv-mlp-baseline")
+    for name in ("wisdm-doctor", "prepare-wisdm", "audit-wisdm", "run-wisdm-phase8a"):
+        wisdm = subparsers.add_parser(name); wisdm.add_argument("--wisdm-root")
+    for name in ("train-wisdm", "evaluate-wisdm", "quantize-wisdm", "run-wisdm-phase8b", "select-wisdm-rtl-samples", "run-wisdm-phase8c", "run-wisdm-final"):
+        subparsers.add_parser(name)
     args = parser.parse_args(argv)
     try:
         commands = {"doctor": lambda: _doctor(), "show-config": lambda: _show_config(), "validate-contracts": lambda: _validate_contracts(),
@@ -343,6 +360,8 @@ def main(argv: list[str] | None = None) -> int:
         commands["validate-mlp-export"] = lambda: _phase6("validate-mlp-export", None, args.package)
         commands.update({"sparrowv-doctor": _sparrowv_doctor, "prepare-sparrowv-run": lambda: _prepare_sparrowv(args.mode, args.package, args.output), "run-sparrowv": lambda: _run_sparrowv(args.mode, args.package, args.output), "validate-sparrowv-result": lambda: _validate_sparrowv(args.package, args.result), "run-sparrowv-baseline": _run_sparrowv_baseline,
                          "prepare-sparrowv-mlp": lambda: _prepare_sparrowv_mlp(args.package, args.output), "run-sparrowv-mlp": lambda: _run_sparrowv_mlp(args.package, args.output), "validate-sparrowv-mlp": lambda: _validate_sparrowv_mlp(args.package, args.result), "run-sparrowv-mlp-baseline": _run_sparrowv_mlp_baseline})
+        commands.update({"wisdm-doctor": lambda: _wisdm_doctor(args.wisdm_root), "prepare-wisdm": lambda: _prepare_wisdm(args.wisdm_root), "audit-wisdm": lambda: _prepare_wisdm(args.wisdm_root), "run-wisdm-phase8a": lambda: _prepare_wisdm(args.wisdm_root)})
+        commands.update({"train-wisdm": lambda: (train_wisdm() and 0), "evaluate-wisdm": lambda: (evaluate_wisdm() and 0), "quantize-wisdm": lambda: (evaluate_wisdm() and 0), "run-wisdm-phase8b": lambda: (run_wisdm() and 0), "select-wisdm-rtl-samples": lambda: (select_rtl_samples() and 0), "run-wisdm-phase8c": lambda: (run_phase8c() and 0), "run-wisdm-final": lambda: (run_final() and 0)})
         return commands[args.command]()
     except ValueError as exc:
         parser.error(str(exc))

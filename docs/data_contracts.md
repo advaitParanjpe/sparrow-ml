@@ -15,3 +15,6 @@ Phase 5 writes ignored `artifacts/phase5_runtime/` workspaces and canonical resu
 Phase 6 writes ignored `artifacts/phase6_multilayer/`. `quantized_model.json` has separate input/hidden scales and two named per-channel INT8/INT32 linear layers. Its export contains `sparrowml_ir_v2_multilayer`, a four-byte-aligned layout, binary tensors, bounded quantized inputs, intermediate integer traces, expected outputs, and symbolic commands. All identities are repository-relative; the hidden activation buffer stores signed INT8 values constrained to `[0,127]`.
 
 Phase 7 writes ignored `artifacts/phase7_multilayer_runtime/` with `sparrowml_sparrowv_multilayer_runtime_result_v1`. It contains four `fc1` external manifests/results, a host-generated hidden trace, one `fc2` result, counter aggregation, compatibility evidence, and a path-free semantic determinism report. Raw zero-bias dot products are `rtl_produced`; INT32 bias adjustment and intermediate processing are `host_reconstructed`.
+# WISDM
+
+WISDM artifacts serialize `WISDM_ROOT` rather than host paths. The canonical feature schema has 16 fields and splits are disjoint by subject.

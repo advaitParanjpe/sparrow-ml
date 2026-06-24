@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration train-mlp quantize-mlp evaluate-mlp-int8 export-mlp validate-mlp-export run-multilayer-baseline test-phase6 prepare-sparrowv-mlp run-sparrowv-mlp validate-sparrowv-mlp run-sparrowv-mlp-baseline test-phase7 test-phase7-integration
+.PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration train-mlp quantize-mlp evaluate-mlp-int8 export-mlp validate-mlp-export run-multilayer-baseline test-phase6 prepare-sparrowv-mlp run-sparrowv-mlp validate-sparrowv-mlp run-sparrowv-mlp-baseline test-phase7 test-phase7-integration wisdm-doctor prepare-wisdm audit-wisdm run-wisdm-phase8a test-phase8a run-wisdm-phase8b test-phase8b select-wisdm-rtl-samples run-wisdm-phase8c test-phase8c test-phase8c-integration run-wisdm-final
 
 help:
 	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-7 targets sparrowv-doctor prepare-sparrowv-{dense,sparse,mlp} run-sparrowv-{dense,sparse,baseline,mlp,mlp-baseline} test-phase5 test-phase5-integration test-phase7 test-phase7-integration milestone clean"
@@ -133,6 +133,30 @@ test-phase7:
 
 test-phase7-integration:
 	SPARROWML_REQUIRE_SPARROWV=1 $(PYTHON) -m pytest tests/test_phase7_integration.py
+
+wisdm-doctor prepare-wisdm audit-wisdm run-wisdm-phase8a:
+	$(PYTHON) -m sparrowml.cli $@
+
+test-phase8a:
+	$(PYTHON) -m pytest tests/test_phase8a.py
+
+test-phase8a-integration:
+	$(PYTHON) -m sparrowml.cli run-wisdm-phase8a
+
+train-wisdm evaluate-wisdm quantize-wisdm run-wisdm-phase8b:
+	$(PYTHON) -m sparrowml.cli $@
+
+test-phase8b:
+	$(PYTHON) -m pytest tests/test_phase8b.py
+
+select-wisdm-rtl-samples run-wisdm-phase8c run-wisdm-final:
+	$(PYTHON) -m sparrowml.cli $@
+
+test-phase8c:
+	$(PYTHON) -m pytest tests/test_phase8c.py
+
+test-phase8c-integration:
+	SPARROWML_REQUIRE_SPARROWV=1 $(PYTHON) -m pytest tests/test_phase8c_integration.py
 
 milestone:
 	bash ./scripts/run_milestone.sh

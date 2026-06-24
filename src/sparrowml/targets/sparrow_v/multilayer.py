@@ -54,8 +54,11 @@ def _package(package: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, A
     return manifest, ir, inputs, traces
 
 
-def _sample(inputs: dict[str, Any], traces: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    item, trace = inputs["samples"][0], traces["samples"][0]
+def _sample(inputs: dict[str, Any], traces: dict[str, Any], sample_id: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+    items = {item["sample_id"]: item for item in inputs["samples"]}; references = {item["sample_id"]: item for item in traces["samples"]}
+    identifier = sample_id or inputs["samples"][0]["sample_id"]
+    if identifier not in items or identifier not in references: raise ValueError("requested sample is absent from package")
+    item, trace = items[identifier], references[identifier]
     if item["sample_id"] != trace["sample_id"] or item["input_int8"] != trace["input_int8"]:
         raise ValueError("Phase 6 input and intermediate trace differ")
     return item, trace
@@ -126,8 +129,8 @@ def _hidden(acc: list[int], ir: dict[str, Any]) -> dict[str, Any]:
             "provenance": "host_reconstructed"}
 
 
-def prepare(package: Path, output: Path) -> Path:
-    _, ir, inputs, traces = _package(package); item, trace = _sample(inputs, traces)
+def prepare(package: Path, output: Path, sample_id: str | None = None) -> Path:
+    _, ir, inputs, traces = _package(package); item, trace = _sample(inputs, traces, sample_id)
     if output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True)
@@ -141,9 +144,9 @@ def prepare(package: Path, output: Path) -> Path:
     return output
 
 
-def run(checkout: SparrowVCheckout, package: Path, output: Path, timeout_seconds: int) -> dict[str, Any]:
-    manifest, ir, inputs, traces = _package(package); item, trace = _sample(inputs, traces)
-    prepare(package, output); constants, identity = ir["constants"], package_identity(package)
+def run(checkout: SparrowVCheckout, package: Path, output: Path, timeout_seconds: int, sample_id: str | None = None) -> dict[str, Any]:
+    manifest, ir, inputs, traces = _package(package); item, trace = _sample(inputs, traces, sample_id)
+    prepare(package, output, sample_id); constants, identity = ir["constants"], package_identity(package)
     audit_data = audit(checkout); _json(output / "compatibility.json", {**audit_data, "multilayer": {"supported_input_count": 16, "external_output_count": 4, "direct_fc1_16_output_support": False, "partitioning_required": True, "bias_policy": "zero_bias_rtl_then_host_reconstruction"}})
     fc1_runs, raw_fc1 = [], []
     for index in range(4):
@@ -173,7 +176,7 @@ def run(checkout: SparrowVCheckout, package: Path, output: Path, timeout_seconds
 
 
 def validate_result(result: dict[str, Any], package: Path) -> dict[str, Any]:
-    _, _, inputs, traces = _package(package); item, trace = _sample(inputs, traces); failures: list[str] = []
+    _, _, inputs, traces = _package(package); item, trace = _sample(inputs, traces, result.get("sample_id")); failures: list[str] = []
     if result.get("format_version") != RESULT_VERSION: failures.append("result schema")
     if result.get("package_identity") != package_identity(package): failures.append("package identity")
     if result.get("sample_id") != item["sample_id"]: failures.append("sample ID")

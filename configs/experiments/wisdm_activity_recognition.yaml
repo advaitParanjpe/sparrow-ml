@@ -1,0 +1,18 @@
+dataset:
+  root_resolution: [WISDM_ROOT, "~/Datasets/WISDM/wisdm-dataset"]
+  device: smartphone
+  sensor: accelerometer
+  classes: [walking, jogging, sitting, standing]
+splits:
+  seed: 20260623
+  proportions: [0.70, 0.15, 0.15]
+window:
+  sampling_rate_hz: 20
+  length_samples: 80
+  stride_samples: 40
+  timestamp_gap_nanoseconds: 125000000
+features: {version: wisdm_features_v1, count: 16}
+training: {seed: 20260623, epochs: 100, batch_size: 32, learning_rate: 0.005, optimizer: Adam}
+quantization: {input: signed_int8, hidden_range: [0, 127], calibration_split: train}
+quality_gates: {test_macro_f1: 0.75, balanced_accuracy: 0.75, int8_f1_drop: 0.03, agreement: 0.95}
+outputs: {phase8a: artifacts/phase8_wisdm/phase8a, phase8b: artifacts/phase8_wisdm/phase8b, phase8c: artifacts/phase8_wisdm/phase8c}
