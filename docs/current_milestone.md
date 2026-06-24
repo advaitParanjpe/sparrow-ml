@@ -1,460 +1,567 @@
-# Milestone: Complete WISDM Phase 8B Export and Phase 8C Sparrow-V Validation
+# Milestone: Final SparrowML Portfolio Polish, Reproducibility, and Release Readiness
 
 ## Objective
 
-Resume the existing WISDM real-data milestone from its current partial implementation.
+Finalize SparrowML as a polished, truthful, reproducible, portfolio-ready hardware–software co-design project.
 
-Phase 8A is already complete and must be treated as an accepted prerequisite.
+The core technical project is already complete:
 
-The measured FP32 and INT8 model-quality results already pass the required gates.
+- deterministic WISDM data ingestion;
+- subject-held-out real-data evaluation;
+- FP32 and INT8 multi-layer inference;
+- structured sparsity experiments;
+- versioned compiler IR;
+- deterministic Sparrow-V deployment packages;
+- single-layer and multi-layer RTL/reference validation;
+- exact intermediate and final integer agreement;
+- real held-out WISDM samples validated through Sparrow-V simulation.
 
-This continuation milestone must:
+This milestone must not add new model architectures, RTL, ISA features, datasets, compiler operators, optimization methods, or research experiments.
 
-1. preserve and validate the completed Phase 8A implementation and artifacts;
-2. diagnose and fix the existing Phase 8B implementation error;
-3. complete deterministic WISDM deployment-package export;
-4. complete package-reload and intermediate-trace validation;
-5. add focused Phase 8B tests;
-6. run aggregate regression checks;
-7. mark Phase 8B complete only after all gates pass;
-8. begin Phase 8C only after Phase 8B passes;
-9. deterministically select held-out WISDM test samples;
-10. execute selected samples through the existing Phase 7 Sparrow-V workflow;
-11. validate all intermediate and final integer values exactly;
-12. generate consolidated WISDM model-quality and RTL-deployment reports.
+It must consolidate the existing implementation and measured results into a clear final repository that another engineer can understand, reproduce, audit, and discuss in an interview.
 
-Do not repeat completed dataset ingestion, feature extraction, or model tuning unless required by a reproducibility check.
+## Final Project Positioning
 
-## Existing Accepted Results
+Use this concise technical framing throughout the repository:
 
-Treat these results as existing measured evidence that must be reproduced or preserved:
+> SparrowML is a hardware-aware edge-AI training, quantization, compilation, and runtime pipeline that deploys a subject-held-out WISDM activity-recognition model onto Sparrow-V, a custom RISC-V processor with INT8 vector execution. The system preserves exact integer semantics across software reference inference, compiler-generated deployment packages, and RTL simulation.
 
-### Phase 8A
+Do not describe SparrowML as:
 
-- 51 phone-accelerometer source files discovered;
-- 49 eligible subjects;
-- deterministic subject-level splits using seed `20260623`;
-- 25,768 accepted windows;
-- 80 samples per window;
-- 50% overlap;
-- four classes:
+- a general-purpose ML compiler;
+- an ONNX or TVM replacement;
+- a production wearable system;
+- physical FPGA or ASIC deployment;
+- a real-time optimized runtime;
+- a medically certified system;
+- a monolithic hardware inference engine.
+
+## Canonical Final Results
+
+Treat these as the canonical measured real-data results unless repository artifacts show a direct inconsistency:
+
+### Dataset
+
+- dataset: WISDM smartphone and smartwatch activity dataset;
+- device used: smartphone;
+- sensor used: accelerometer;
+- classes:
   - walking;
   - jogging;
   - sitting;
   - standing;
-- test class counts:
-  - walking: 931;
-  - jogging: 932;
-  - sitting: 797;
-  - standing: 797;
-- Phase 8A artifacts exist under:
+- eligible subjects: 49;
+- subject split:
+  - 35 train;
+  - 7 validation;
+  - 7 test;
+- accepted windows: 25,768;
+- window length: 80 samples;
+- overlap: 50%;
+- input features: 16;
+- evaluation: subject-held-out.
+
+### Model
 
 ```text
-artifacts/phase8_wisdm/phase8a/
+Linear(16,16)
+ReLU
+Linear(16,4)
 ```
 
-### Phase 8B measured model quality
+- parameters: 340;
+- execution: FP32 training and explicit INT8 inference;
+- compiler graph:
+  - `DenseLinearInt8`;
+  - `ReLU`;
+  - `RequantizeInt8`;
+  - `DenseLinearInt8`.
 
-- FP32 test macro-F1:
+### Real-data quality
 
-```text
-0.9287458208759758
-```
+- FP32 accuracy: `0.9259473531964131`;
+- FP32 macro-F1: `0.9287458208759758`;
+- FP32 balanced accuracy: `0.9296898801135173`;
+- INT8 accuracy: `0.9175585768006942`;
+- INT8 macro-F1: `0.9197794804065271`;
+- INT8 balanced accuracy: `0.920638703760132`;
+- INT8 macro-F1 drop: `0.008966340469448664`;
+- FP32/INT8 agreement: `0.9872722013306335`.
 
-- FP32 test balanced accuracy:
+### RTL validation
 
-```text
-0.9296898801135173
-```
+- held-out WISDM samples selected: 12;
+- `fc1` exact matches: 12/12;
+- hidden INT8 exact matches: 12/12;
+- `fc2` exact matches: 12/12;
+- prediction exact matches: 12/12;
+- Sparrow-V remained unmodified and clean.
 
-- INT8 test macro-F1:
+### Runtime limitations
 
-```text
-0.9197794804065271
-```
+The current multi-layer execution uses:
 
-- INT8 macro-F1 drop:
+- four isolated `fc1` partitions;
+- one isolated `fc2` run;
+- host-side full INT32 bias reconstruction;
+- host-side ReLU and requantization;
+- partitioned simulation cycle totals.
 
-```text
-0.008966340469448664
-```
+Do not present these counters as optimized monolithic end-to-end latency.
 
-- FP32/INT8 test prediction agreement:
+## Relevant Files
 
-```text
-0.9872722013306335
-```
-
-These results pass the existing quality gates.
-
-Do not perform a hyperparameter sweep.
-
-## First Action: Diagnose Existing Failure
-
-Read:
+Read first:
 
 - `AGENTS.md`
 - `docs/codex_context.md`
 - `docs/current_milestone.md`
-- `docs/codex_milestone_result.md`
-- existing Phase 8A/8B implementation;
-- current artifacts under `artifacts/phase8_wisdm/phase8a/` and `phase8b/`;
-- the exact traceback or implementation error from the failed `run-wisdm-phase8b` execution.
+- `README.md`
+- `docs/architecture.md`
+- `docs/build_roadmap.md`
+- all final results documents under `docs/results/`;
+- reproducibility and contract documentation;
+- Make targets and CLI help;
+- repository checks;
+- tracked source manifest.
 
-Reproduce the failure once with the narrowest command that triggers it.
+Inspect implementation files only where necessary to verify documentation or commands.
 
-Record:
+Do not broadly refactor working code.
 
-- failing function;
-- failing file;
-- exception type;
-- root cause;
-- fix.
+## Workstream 1 — Final README
 
-Do not restart the entire pipeline before understanding the existing error.
+Rewrite and polish the root `README.md` so it works as the primary portfolio entry point.
 
-## Phase 8A Preservation Gate
+It should include, in this order:
 
-Before continuing Phase 8B, verify without regenerating unnecessarily:
+1. project title and one-sentence description;
+2. concise project motivation;
+3. final system overview;
+4. architecture diagram;
+5. supported workflow;
+6. canonical WISDM results table;
+7. RTL validation results;
+8. quick-start reproduction;
+9. repository structure;
+10. limitations;
+11. documentation links;
+12. licence.
 
-- Phase 8A artifacts parse;
-- subject splits remain disjoint;
-- feature schema contains exactly 16 features;
-- all required classes exist;
-- processed feature data is available;
-- prior Phase 8A focused tests pass.
+The README should be concise enough to skim but detailed enough for a hardware or ML-systems interviewer.
 
-Run:
+### README opening
+
+Use a strong opening along these lines:
+
+> SparrowML is a hardware-aware edge-AI compiler and runtime that trains and quantizes a human-activity-recognition model, lowers it into a deterministic deployment package, and validates exact integer execution through Sparrow-V RTL simulation.
+
+Avoid inflated wording such as:
+
+- production-grade;
+- state of the art;
+- industry leading;
+- tapeout ready;
+- real-time;
+- complete general compiler.
+
+## Workstream 2 — Architecture Diagrams
+
+Add or refine clear Mermaid diagrams.
+
+At minimum include:
+
+### End-to-end pipeline
 
 ```text
-python3 -m pytest tests/test_phase8a.py
+WISDM raw accelerometer data
+→ subject-safe windows
+→ 16-feature extraction
+→ FP32 MLP training
+→ INT8 calibration/quantization
+→ SparrowML IR
+→ binary deployment package
+→ Sparrow-V runtime adapter
+→ RTL simulation
+→ exact reference validation
 ```
 
-Phase 8A must remain complete.
-
-## Complete Phase 8B
-
-### Required outputs
-
-Complete:
+### Multi-layer execution
 
 ```text
-artifacts/phase8_wisdm/phase8b/
+INT8 input
+→ fc1 INT8 vector dots
+→ INT32 accumulators
+→ bias reconstruction
+→ ReLU
+→ hidden INT8 requantization
+→ fc2 INT8 vector dots
+→ final logits/prediction
 ```
 
-At minimum it must contain:
+Visually distinguish:
+
+- SparrowML software;
+- generated artifacts;
+- Sparrow-V runtime;
+- RTL execution;
+- host-side reconstruction.
+
+Do not imply host-side operations occur in RTL.
+
+## Workstream 3 — Consolidated Final Results
+
+Create or finalize:
 
 ```text
-fp32_checkpoint.pt
-training_metrics.json
-preprocessing.json
-input_calibration.json
-hidden_calibration.json
-quantized_model.json
-integer_evaluation.json
-model_quality.json
-confusion_matrices.json
-prediction_agreement.json
-export/
-summary.md
-determinism.json
+docs/results/final_results.md
 ```
 
-Exact filenames may follow current conventions, but equivalent evidence is required.
+It must consolidate the project into one authoritative report.
 
-### Deployment package
+Include:
 
-Reuse the Phase 6 multi-layer exporter.
+### Dataset protocol
 
-The WISDM package must contain:
+- source dataset;
+- selected device and sensor;
+- classes;
+- subject split;
+- windowing;
+- feature extraction;
+- leakage prevention.
+
+### Model results
+
+A compact table containing:
+
+| Model | Accuracy | Macro-F1 | Balanced accuracy |
+|---|---:|---:|---:|
+| FP32 MLP | measured value | measured value | measured value |
+| INT8 MLP | measured value | measured value | measured value |
+
+### Quantization
+
+Include:
+
+- macro-F1 degradation;
+- prediction agreement;
+- input and hidden calibration policy;
+- clipping summary;
+- accumulator safety.
+
+### Deployment correctness
+
+Include:
+
+| Validation level | Result |
+|---|---:|
+| Package reload | exact |
+| `fc1` accumulators | 12/12 exact |
+| Hidden INT8 codes | 12/12 exact |
+| `fc2` accumulators | 12/12 exact |
+| Predictions | 12/12 exact |
+
+### Compute and runtime
+
+Report:
+
+- 256 conceptual `fc1` multiplications per sample;
+- 64 conceptual `fc2` multiplications per sample;
+- 320 total conceptual multiplications;
+- measured partitioned simulation counters;
+- measured versus derived provenance;
+- partitioning limitations.
+
+### Earlier controlled experiments
+
+Briefly summarize, without overwhelming the final story:
+
+- synthetic fixture;
+- dense INT8 reference;
+- 2:4 structured sparsity;
+- 50% arithmetic reduction;
+- 40.625% compressed weight-storage reduction;
+- equal single-layer dense/sparse cycle result;
+- lack of measured sparse speedup.
+
+Position these as controlled system-validation experiments, not the final WISDM model result.
+
+## Workstream 4 — Reproducibility Guide
+
+Create or finalize:
 
 ```text
-manifest.json
-model_ir.json
-memory_map.json
-model_data.bin
-input_data.bin
-input.json
-expected_output.json
-intermediate_reference.json
-program.json
-export_report.json
-README.md
+docs/reproduction.md
+```
+
+It must provide an ordered reproduction path.
+
+### Environment prerequisites
+
+Document:
+
+- supported Python version;
+- Python dependencies;
+- PyTorch;
+- NumPy;
+- PyYAML;
+- pytest;
+- Icarus Verilog;
+- `vvp`;
+- Sparrow-V sibling checkout;
+- local WISDM dataset.
+
+### Environment variables
+
+```bash
+export WISDM_ROOT=~/Datasets/WISDM/wisdm-dataset
+export SPARROWV_ROOT=~/Desktop/projects/sparrow-v
+```
+
+### Fast verification
+
+Provide commands that do not retrain or rerun every expensive stage unnecessarily.
+
+For example:
+
+```bash
+make doctor
+make check
+make docs-check
+```
+
+### Full real-data workflow
+
+Document:
+
+```bash
+make run-wisdm-phase8a
+make run-wisdm-phase8b
+make run-wisdm-phase8c
+```
+
+and:
+
+```bash
+make run-wisdm-final
+```
+
+### RTL integration
+
+Document required commands and expected outputs.
+
+Clearly state which commands:
+
+- require WISDM;
+- require Sparrow-V;
+- run RTL simulation;
+- regenerate training artifacts;
+- may take longer.
+
+Do not include machine-specific absolute paths except as examples.
+
+## Workstream 5 — Repository Navigation
+
+Ensure the repository has a clear source and documentation map.
+
+Update:
+
+```text
+docs/source_manifest.md
+```
+
+or equivalent.
+
+The map should identify:
+
+- data ingestion;
+- feature extraction;
+- models;
+- training;
+- quantization;
+- sparsity;
+- compiler;
+- target adapters;
+- CLI;
+- tests;
+- configurations;
+- result documents.
+
+Remove or fix stale references.
+
+## Workstream 6 — CLI and Make Help
+
+Audit:
+
+```bash
+make help
+python3 -m sparrowml.cli --help
+```
+
+Ensure important commands are discoverable and grouped logically.
+
+The final help should distinguish:
+
+- general checks;
+- synthetic baseline workflows;
+- compiler/export workflows;
+- Sparrow-V integration;
+- WISDM real-data workflow;
+- final verification.
+
+Do not add duplicate aliases unless they materially improve usability.
+
+## Workstream 7 — Clean Repository State
+
+Audit for unwanted tracked or untracked files:
+
+- `.DS_Store`;
+- caches;
+- checkpoints;
+- raw datasets;
+- processed windows;
+- generated packages;
+- simulator logs;
+- temporary workspaces;
+- Python bytecode;
+- virtual environments.
+
+Ensure `.gitignore` covers all generated paths.
+
+Do not remove legitimate source-controlled test fixtures.
+
+## Workstream 8 — Claims Audit
+
+Perform a strict claims audit across:
+
+- README;
+- final results;
+- architecture documentation;
+- phase result documents;
+- comments and help text.
+
+Correct misleading or inconsistent claims.
+
+Required distinctions:
+
+- synthetic fixture accuracy versus WISDM accuracy;
+- FP32 versus INT8;
+- software reference versus RTL output;
+- RTL-produced versus host-reconstructed;
+- measured versus derived counters;
+- partitioned simulation totals versus optimized latency;
+- RTL simulation versus physical hardware;
+- structured-sparsity reduction versus measured speedup.
+
+Do not erase useful earlier results. Label them correctly.
+
+## Workstream 9 — Release Checklist
+
+Create:
+
+```text
+docs/release_checklist.md
+```
+
+Include checks for:
+
+- tests;
+- documentation;
+- repository cleanliness;
+- dataset exclusion;
+- artifact exclusion;
+- Sparrow-V cleanliness;
+- command verification;
+- links;
+- claims;
+- licence;
+- final results;
+- reproducibility.
+
+Mark items as complete only when verified.
+
+Do not create a Git tag or release automatically.
+
+## Workstream 10 — Portfolio and CV Summary
+
+Create:
+
+```text
+docs/portfolio_summary.md
 ```
 
 Include:
 
-- WISDM dataset identity;
-- class ordering;
-- feature ordering;
-- subject-split identity;
-- preprocessing statistics;
-- quantization parameters;
-- checkpoint identity;
-- selected canonical test sample;
-- expected first-layer accumulators;
-- expected hidden INT8 codes;
-- expected second-layer accumulators;
-- final prediction;
-- hashes.
+### One-line summary
 
-Do not serialize absolute dataset paths.
+A concise one-line description.
 
-### Package reload validation
+### Short project paragraph
 
-Reload the generated package and require exact equality for:
+Approximately 80–120 words.
 
-- decoded input INT8 vector;
-- both weight tensors;
-- both bias tensors;
-- all scales;
-- first-layer accumulators;
-- hidden INT8 vector;
-- second-layer accumulators;
-- final prediction.
+### Three CV bullets
 
-Repeated export must be byte-for-byte deterministic.
+Write three truthful, metric-backed bullets suitable for CPU/RTL/ML-systems applications.
 
-### Phase 8B focused tests
+The bullets should emphasize:
 
-Create or complete:
+1. end-to-end hardware-aware ML pipeline;
+2. real WISDM model quality and quantization;
+3. exact Sparrow-V RTL validation and compiler/runtime integration.
 
-```text
-tests/test_phase8b.py
-```
+Do not overstate physical implementation or production deployment.
 
-Cover:
+### Interview talking points
 
-- WISDM feature-dataset loading;
-- training-only standardization;
-- metric calculations;
-- calibration split isolation;
-- quantized artifact schema;
-- export package generation;
-- package reload;
-- intermediate-trace equality;
-- deterministic hashes;
-- rejection of absolute paths.
+Include:
 
-Tests must not retrain the full model repeatedly.
+- why 16 handcrafted features;
+- why subject-held-out splitting;
+- why explicit integer reference inference;
+- why per-output-channel quantization;
+- why exact RTL comparison matters;
+- what did and did not improve with sparsity;
+- why partitioned simulation is not optimized latency;
+- next research directions.
 
-### Phase 8B gate
+## Documentation Consistency
 
-Phase 8B passes only if:
+Ensure these documents agree:
 
-1. Phase 8A preservation checks pass.
-2. The implementation error is fixed.
-3. FP32 macro-F1 remains at least `0.75`.
-4. FP32 balanced accuracy remains at least `0.75`.
-5. INT8 macro-F1 drop remains no more than `0.03`.
-6. FP32/INT8 agreement remains at least `0.95`.
-7. Input and hidden calibration use training data only.
-8. All accumulators fit signed INT32.
-9. Hidden codes remain in `[0,127]`.
-10. Deployment package export completes.
-11. Package reload reproduces every intermediate exactly.
-12. Export is deterministic.
-13. Focused Phase 8B tests pass.
-14. Required aggregate regression checks pass.
+- `README.md`;
+- `docs/results/final_results.md`;
+- `docs/reproduction.md`;
+- `docs/portfolio_summary.md`;
+- phase result documents;
+- architecture documentation.
 
-Do not begin Phase 8C unless every Phase 8B requirement passes.
+There must be one canonical source for final metrics.
 
-## Phase 8C Sample Selection
+Where possible, generate or validate repeated metrics from structured artifacts rather than manually duplicating numbers.
 
-Select samples only from held-out test subjects.
+## Tests and Checks
 
-Use deterministic rules:
+Add small documentation/repository tests where useful, such as:
 
-### Correct examples
+- required final documents exist;
+- README links resolve;
+- no forbidden claims;
+- no absolute local paths;
+- no generated data tracked;
+- canonical metrics appear consistently;
+- required Make targets exist.
 
-Select:
-
-```text
-2 correctly classified INT8 examples per class
-```
-
-Choose the lowest canonical window IDs satisfying the rule.
-
-Expected target:
-
-```text
-8 correctly classified examples
-```
-
-### Misclassified examples
-
-Select:
-
-```text
-up to 1 INT8-misclassified example per true class
-```
-
-Choose the lowest canonical window ID for each class where available.
-
-Maximum preferred total:
-
-```text
-12 samples
-```
-
-Record:
-
-- window ID;
-- subject ID;
-- true class;
-- FP32 prediction;
-- INT8 prediction;
-- selection reason.
-
-Do not select any training or validation example.
-
-## Phase 8C Sparrow-V Execution
-
-Reuse the Phase 7 multi-layer runtime adapter.
-
-For each selected sample:
-
-1. prepare four deterministic `fc1` partitions;
-2. run all four through Sparrow-V RTL simulation;
-3. parse raw dot-product accumulators;
-4. apply documented host-side INT32 bias reconstruction;
-5. validate all 16 post-bias `fc1` accumulators exactly;
-6. reconstruct ReLU and hidden requantization;
-7. validate all 16 hidden INT8 codes exactly;
-8. execute `fc2`;
-9. apply documented bias reconstruction;
-10. validate all four `fc2` accumulators exactly;
-11. reconstruct final logits;
-12. validate the final INT8 prediction exactly;
-13. retain measured and derived counters.
-
-A model misclassification is allowed.
-
-RTL correctness is defined as agreement with the SparrowML INT8 reference, not agreement with the ground-truth activity label.
-
-## Phase 8C runtime efficiency
-
-Avoid recompiling invariant RTL unnecessarily if the existing adapter can safely reuse builds.
-
-Do not compromise workspace isolation or correctness.
-
-Do not run the entire test set through RTL.
-
-## Phase 8C outputs
-
-Generate:
-
-```text
-artifacts/phase8_wisdm/phase8c/
-```
-
-including:
-
-```text
-selected_samples.json
-per_sample/
-rtl_validation_summary.json
-counter_summary.json
-model_quality_summary.json
-deployment_summary.json
-final_results.json
-summary.md
-determinism.json
-```
-
-## Consolidated final report
-
-Generate a final real-data report containing:
-
-### Dataset
-
-- subject counts;
-- split subject IDs or stable split hash;
-- window counts;
-- class counts;
-- feature schema;
-- leakage checks.
-
-### Model quality
-
-- FP32 accuracy;
-- FP32 macro-F1;
-- FP32 balanced accuracy;
-- INT8 accuracy;
-- INT8 macro-F1;
-- INT8 balanced accuracy;
-- per-class metrics;
-- confusion matrices;
-- prediction agreement.
-
-### Quantization
-
-- input and hidden scales;
-- clipping;
-- accumulator ranges;
-- logit error;
-- checkpoint and model sizes.
-
-### Deployment
-
-- IR/package identity;
-- package size;
-- scratchpad usage;
-- selected RTL sample count;
-- exact first-layer match count;
-- exact hidden-code match count;
-- exact second-layer match count;
-- exact prediction match count.
-
-### Runtime counters
-
-- per-sample and aggregate partitioned cycles;
-- retired instructions;
-- vector loads;
-- dense dot instructions;
-- conceptual multiplication count;
-- measured versus derived provenance.
-
-Clearly state that partitioned simulation totals are not optimized monolithic latency.
-
-## CLI and Make targets
-
-Complete or add:
-
-```text
-sparrowml run-wisdm-phase8b
-sparrowml select-wisdm-rtl-samples
-sparrowml run-wisdm-phase8c
-sparrowml run-wisdm-final
-```
-
-Make targets:
-
-```text
-run-wisdm-phase8b
-test-phase8b
-select-wisdm-rtl-samples
-run-wisdm-phase8c
-test-phase8c
-test-phase8c-integration
-run-wisdm-final
-```
-
-The gated final command must:
-
-1. verify existing Phase 8A completion;
-2. run and validate Phase 8B;
-3. stop if Phase 8B fails;
-4. run Phase 8C;
-5. generate final consolidated results.
+Do not create brittle prose snapshot tests.
 
 ## Validation
 
-Use focused checks during development.
+Run focused documentation and repository checks during development.
 
-At final acceptance run:
+At final acceptance run once:
 
-```text
+```bash
 python3 -m compileall src scripts
 pytest
 make test-phase1
@@ -473,101 +580,98 @@ make docs-check
 git diff --check
 ```
 
-Run local integrations:
+Run the bounded final WISDM verification only if existing artifacts are available:
 
-```text
-make test-phase8a-integration
-make run-wisdm-phase8b
-make test-phase8c-integration
-make run-wisdm-phase8c
+```bash
 make run-wisdm-final
 ```
 
-Verify:
+Do not retrain unnecessarily if the purpose is documentation verification and canonical artifacts already validate.
 
-```text
+Verify Sparrow-V remains clean:
+
+```bash
 git -C "$SPARROWV_ROOT" status --short
 ```
 
-Sparrow-V must remain clean.
-
-## Documentation
-
-Complete or add:
-
-```text
-docs/wisdm_data_contract.md
-docs/wisdm_evaluation_protocol.md
-docs/results/phase8a_wisdm_dataset.md
-docs/results/phase8b_wisdm_model.md
-docs/results/phase8c_wisdm_rtl.md
-docs/results/final_wisdm_results.md
-```
-
-Update:
-
-- `README.md`
-- `docs/architecture.md`
-- `docs/build_roadmap.md`
-- `docs/codex_context.md`
-- `docs/data_contracts.md`
-- `docs/experiment_policy.md`
-
-## Repository safety
-
-Never commit:
-
-- raw WISDM files;
-- processed feature rows;
-- trained checkpoints;
-- generated deployment packages;
-- simulator workspaces;
-- raw subject sensor data.
-
-Ensure generated paths remain ignored.
-
 ## Acceptance Criteria
 
-This continuation milestone is complete only when:
+The milestone is complete only when:
 
-1. Existing Phase 8A remains valid.
-2. The Phase 8B implementation error is diagnosed and fixed.
-3. Existing real-data quality metrics are preserved or validly reproduced.
-4. Phase 8B export completes.
-5. Package reload reproduces all intermediate values exactly.
-6. Phase 8B focused tests pass.
-7. Aggregate Phase 1–8B checks pass.
-8. Phase 8C begins only after Phase 8B passes.
-9. Selected samples come only from held-out subjects.
-10. Selection is deterministic.
-11. At least eight correct examples are selected where available.
-12. Misclassified examples are included where available.
-13. Every selected sample runs through Sparrow-V.
-14. Every first-layer accumulator matches exactly.
-15. Every hidden INT8 code matches exactly.
-16. Every second-layer accumulator matches exactly.
-17. Every final prediction matches the INT8 reference.
-18. Sparrow-V remains clean.
-19. Consolidated real-data results are generated.
-20. Documentation matches implementation.
-21. No raw dataset is committed.
-22. `git diff --check` passes.
-23. No commit or push occurs.
-24. `docs/codex_milestone_result.md` is finalized.
+1. README is polished and portfolio-ready.
+2. README describes the final real-data project first.
+3. Synthetic experiments are clearly secondary.
+4. End-to-end architecture diagram exists.
+5. Multi-layer execution diagram exists.
+6. Host-side and RTL operations are distinguished.
+7. Canonical final results document exists.
+8. Final WISDM metrics are correct.
+9. Quantization results are correct.
+10. RTL exact-match totals are correct.
+11. Measured and derived counters are distinguished.
+12. Partitioned-cycle limitations are explicit.
+13. Reproduction guide exists.
+14. WISDM path configuration is documented.
+15. Sparrow-V path configuration is documented.
+16. Fast and full workflows are documented.
+17. Repository structure is documented.
+18. Make help is current.
+19. CLI help is current.
+20. Generated artifacts remain ignored.
+21. Raw WISDM data is not tracked.
+22. Processed WISDM windows are not tracked.
+23. Checkpoints are not tracked.
+24. No `.DS_Store` files are tracked.
+25. Claims audit passes.
+26. No physical hardware claim is made.
+27. No monolithic latency claim is made.
+28. No unsupported general compiler claim is made.
+29. Release checklist exists.
+30. Portfolio summary exists.
+31. Three truthful CV bullets exist.
+32. Interview talking points exist.
+33. README links resolve.
+34. Documentation references are current.
+35. Phase 1–8 tests remain passing.
+36. Repository checks pass.
+37. Documentation checks pass.
+38. `git diff --check` passes.
+39. Sparrow-V remains clean.
+40. No commit, push, tag, or release occurs.
+41. `docs/codex_milestone_result.md` is finalized.
+
+## Out of Scope
+
+Do not implement:
+
+- new datasets;
+- new model architectures;
+- hyperparameter tuning;
+- sparse MLP;
+- new compiler operators;
+- new Sparrow-V instructions;
+- RTL changes;
+- FPGA execution;
+- ASIC execution;
+- monolithic runtime;
+- TinyNPU integration;
+- research experiments;
+- benchmark comparisons requiring new external data;
+- website changes;
+- GitHub release creation;
+- Git tagging.
 
 ## Stop Conditions
 
 Stop only if:
 
-- the existing Phase 8A artifacts are corrupt or scientifically invalid;
-- the Phase 8B error exposes a fundamental incompatible package contract;
-- model metrics cannot be reproduced within documented determinism limits;
-- package reload cannot reproduce integer traces;
-- Sparrow-V cannot execute the WISDM package;
-- a Sparrow-V source modification appears necessary;
-- a major prior-phase correctness defect is discovered.
+- canonical metrics conflict irreconcilably across validated artifacts;
+- required final results artifacts are missing or corrupt;
+- repository checks expose tracked raw/private data;
+- a major correctness defect is discovered;
+- Sparrow-V is unexpectedly dirty due to the workflow.
 
-Ordinary implementation errors, missing tests, schema mismatches, export bugs, and report bugs are not stop conditions.
+Ordinary documentation inconsistencies, broken links, stale commands, claim wording, and formatting are not stop conditions.
 
 ## Token-Efficiency Instructions
 
@@ -575,16 +679,15 @@ Follow `AGENTS.md`.
 
 In particular:
 
-- do not regenerate Phase 8A unless validation fails;
-- reproduce the Phase 8B failure once, then fix it;
-- reuse the already trained checkpoint where valid;
-- avoid retraining unless required;
-- inspect only WISDM Phase 8 and reused Phase 6/7 modules;
-- do not broadly inspect Sparrow-V;
-- do not run RTL until Phase 8B is complete;
-- use focused tests first;
+- prioritize README, final results, reproduction, release checklist, and portfolio summary;
+- do not audit every historical file line-by-line;
+- use structured artifacts as the source of truth;
+- do not retrain unless required;
+- do not run RTL repeatedly;
+- do not inspect Sparrow-V broadly;
+- avoid implementation refactors;
 - run aggregate validation once;
-- keep the result concise.
+- keep the final milestone result concise.
 
 ## Result File
 
@@ -594,30 +697,34 @@ Update:
 docs/codex_milestone_result.md
 ```
 
-Include:
+Finalize with:
 
 ```text
-PHASE_8A_STATUS: COMPLETE
-PHASE_8B_STATUS: COMPLETE
-PHASE_8C_STATUS: COMPLETE
 STATUS: COMPLETE
 ```
 
-only if every phase passes.
+only when the repository is genuinely release-ready.
 
 Include:
 
-- original Phase 8B root cause;
-- fix;
-- final FP32 and INT8 results;
-- package/export identity;
-- selected RTL samples;
-- exact-match totals;
-- counter totals;
-- determinism evidence;
-- validation results;
+- final project summary;
+- canonical metrics;
+- final documentation created or updated;
+- diagrams added;
+- reproduction commands verified;
+- claims corrected;
+- repository-cleanliness result;
+- tests and checks;
+- Sparrow-V cleanliness;
+- remaining limitations;
 - changed files;
-- limitations;
-- confirmation that raw WISDM data was not committed;
-- confirmation that Sparrow-V remained clean;
-- confirmation that no commit or push occurred.
+- confirmation that no raw WISDM data was committed;
+- confirmation that no commit, push, tag, or release occurred.
+
+## Completion Statement
+
+If all acceptance criteria pass, state clearly:
+
+```text
+SparrowML is complete for its defined portfolio scope.
+```
