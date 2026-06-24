@@ -306,7 +306,14 @@ def _phase6(command: str, config_path: str | None, package: str | None = None) -
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="sparrowml")
+    parser = argparse.ArgumentParser(
+        prog="sparrowml",
+        description="Deterministic SparrowML training, quantization, export, and Sparrow-V RTL-validation commands.",
+        epilog=("Groups: diagnostics (doctor, show-config, validate-contracts); synthetic baselines "
+                "(generate-fixture through run-sparse-baseline); compiler/export (lower-ir through "
+                "run-export-baseline); Sparrow-V integration (sparrowv-doctor through "
+                "run-sparrowv-mlp-baseline); WISDM real-data (wisdm-doctor through run-wisdm-final)."),
+    )
     subparsers = parser.add_subparsers(dest="command", required=True)
     for name in ("doctor", "show-config", "validate-contracts"):
         subparsers.add_parser(name)

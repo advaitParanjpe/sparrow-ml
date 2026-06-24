@@ -10,7 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-REQUIRED_FILES = ("AGENTS.md", "README.md", "LICENSE", "Makefile", "pyproject.toml", ".gitignore", ".env.example", "configs/project.yaml", "configs/targets/sparrow_v.yaml", "docs/current_milestone.md", "docs/codex_context.md", "docs/codex_milestone_prompt.md", "docs/codex_milestone_result.md", "docs/architecture.md", "docs/build_roadmap.md", "docs/data_contracts.md", "docs/experiment_policy.md", "docs/decisions/ADR-001-repository-boundary.md", "scripts/run_milestone.sh", "scripts/smoke_test.py")
+REQUIRED_FILES = ("AGENTS.md", "README.md", "LICENSE", "Makefile", "pyproject.toml", ".gitignore", ".env.example", "configs/project.yaml", "configs/targets/sparrow_v.yaml", "docs/current_milestone.md", "docs/codex_context.md", "docs/codex_milestone_prompt.md", "docs/codex_milestone_result.md", "docs/architecture.md", "docs/build_roadmap.md", "docs/data_contracts.md", "docs/experiment_policy.md", "docs/decisions/ADR-001-repository-boundary.md", "docs/results/final_results.md", "docs/reproduction.md", "docs/source_manifest.md", "docs/release_checklist.md", "docs/portfolio_summary.md", "scripts/run_milestone.sh", "scripts/smoke_test.py")
 REQUIRED_DIRS = ("src/sparrowml", "src/sparrowml/artifacts", "src/sparrowml/targets/sparrow_v", "tests", "examples", "data/raw", "data/interim", "data/processed", "artifacts", "experiments")
 LINK_PATTERN = re.compile(r"(?<!!)\[[^]]*\]\(([^)]+)\)")
 ABSOLUTE_PATTERN = re.compile(r"(?<![\w-])/(?:Users|home|tmp)/")
@@ -43,6 +43,19 @@ def main() -> int:
             for target in LINK_PATTERN.findall(path.read_text(encoding="utf-8")):
                 target = target.split("#", 1)[0].strip("<>")
                 if target and "://" not in target and not target.startswith("mailto:") and not (path.parent / target).exists(): errors.append(f"broken Markdown link: {relative} -> {target}")
+    canonical_metrics = ("0.9259473531964131", "0.9197794804065271", "12/12 exact")
+    final_results = ROOT / "docs/results/final_results.md"
+    if final_results.is_file():
+        final_text = final_results.read_text(encoding="utf-8")
+        for metric in canonical_metrics:
+            if metric not in final_text: errors.append(f"missing canonical final metric: {metric}")
+    readme = ROOT / "README.md"
+    if readme.is_file():
+        text = readme.read_text(encoding="utf-8").lower()
+        for metric in canonical_metrics:
+            if metric not in text: errors.append(f"README missing canonical metric: {metric}")
+        for claim in ("production-grade", "state of the art", "industry leading", "tapeout ready"):
+            if claim in text: errors.append(f"unsupported README claim: {claim}")
     try:
         import yaml
         for path in (ROOT / "configs").rglob("*.yaml"): yaml.safe_load(path.read_text(encoding="utf-8"))

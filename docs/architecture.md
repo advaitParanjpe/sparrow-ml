@@ -1,10 +1,55 @@
 # Architecture
 
-System flow: `dataset → preprocessing → PyTorch model → quantization → deterministic 2:4 pruning/fixed-mask fine-tuning → packed sparse artifact → SparrowML IR → deterministic deployment package → SparrowML Phase 5 adapter → Sparrow-V external-workload RTL simulation → validation reports`.
+SparrowML is a hardware-aware edge-AI training, quantization, compilation, and runtime pipeline that deploys a subject-held-out WISDM activity-recognition model onto Sparrow-V, a custom RISC-V processor with INT8 vector execution. It preserves exact integer semantics across software reference inference, compiler-generated deployment packages, and RTL simulation.
 
-Phase 6 extends the canonical IR parser/serializer with a backwards-compatible multi-operator version for the fixed `Linear(16,16) → ReLU → Linear(16,4)` graph. Phase 7 maps it to the existing fixed `16→4` external Sparrow-V workload interface: four exact output-channel partitions execute `fc1`, SparrowML reconstructs bias, ReLU, and hidden requantization, then one workload executes `fc2`. Each RTL workload has zero bias and SparrowML adds the serialized INT32 bias afterward with `host_reconstructed` provenance. The deterministic memory map includes an explicit 16-byte hidden buffer. This is partitioned RTL simulation, not a monolithic hardware scheduler.
+## End-to-end pipeline
 
-Phase 1 implements deterministic JSONL fixture generation, train-only standardization, a CPU FP32 `Linear(16, 4)` model, evaluation, and local artifacts. Phase 2 adds symmetric INT8 calibration, per-output-channel weights, INT32 biases, and explicit integer inference. Phase 3 groups each output row along the input-feature axis as four consecutive lanes, retains two largest magnitudes (lower lane breaks ties), and represents each group as two ascending-lane INT8 values plus legal 3-bit metadata. Phase 4 owns a narrow canonical IR for dense INT8 and sparse 2:4 `Linear(16,4)`, four-byte-aligned little-endian logical layouts, symbolic runtime commands, and exact reference-backed package validation. Phase 5 converts those packages to Sparrow-V's versioned external manifest and validates the existing RTL testbench result. Large INT32 biases are reconstructed host-side after an RTL-asserted zero-bias dot product because the existing Sparrow-V workload template uses signed-12-bit `ADDI` bias materialization. SparrowML owns model/data/optimization/export/compiler/runtime/evaluation tooling; Sparrow-V owns processor RTL, instructions, simulator, testbenches, counters, and hardware-specific execution.
-# Phase 8 WISDM path
+```mermaid
+flowchart LR
+  subgraph SW["SparrowML software"]
+    A[WISDM raw accelerometer data] --> B[Subject-safe windows]
+    B --> C[16-feature extraction]
+    C --> D[FP32 MLP training]
+    D --> E[INT8 calibration / quantization]
+    E --> F[SparrowML IR]
+  end
+  subgraph ART["Generated artifacts"]
+    F --> G[Binary deployment package]
+  end
+  subgraph RT["Sparrow-V runtime adapter"]
+    G --> H[External fixed-shape workloads]
+  end
+  subgraph RTL["Sparrow-V RTL execution"]
+    H --> I[INT8 vector-dot simulation]
+  end
+  I --> J[Exact reference validation]
+```
 
-Phase 8 reuses the fixed Phase 6 integer graph and Phase 7 partitioned runtime. WISDM preprocessing and calibration are train-only; package traces and RTL comparisons are exact integer checks.
+The fixed model is `Linear(16,16) → ReLU → Linear(16,4)`. Input standardization and activation calibration use training subjects only. The package records `DenseLinearInt8`, `ReLU`, `RequantizeInt8`, and `DenseLinearInt8` with deterministic serialization and reload checks.
+
+## Multi-layer execution boundary
+
+```mermaid
+flowchart LR
+  A[INT8 input] --> B
+  subgraph R["Sparrow-V RTL execution: five isolated workloads"]
+    B[fc1 INT8 vector dots<br/>four 16→4 partitions] --> C[Raw INT32 dot accumulators]
+    H[fc2 INT8 vector dots<br/>one 16→4 run] --> I[Raw final INT32 dot accumulators]
+  end
+  subgraph HST["SparrowML host-side reconstruction"]
+    C --> D[Add full INT32 fc1 bias]
+    D --> E[Reconstruct + ReLU]
+    E --> F[Hidden INT8 requantization]
+    F --> H
+    I --> J[Add full INT32 fc2 bias]
+    J --> K[Reconstruct logits / prediction]
+  end
+```
+
+The RTL interface has four output channels. SparrowML therefore runs `fc1` partitions in channels `0–3`, `4–7`, `8–11`, and `12–15`, then one `fc2` run. RTL produces zero-bias dot products; SparrowML reconstructs full INT32 bias, ReLU, and hidden requantization on the host. Exact comparisons cover post-bias `fc1` accumulators, hidden INT8 codes, post-bias `fc2` accumulators, and prediction.
+
+Measured counters from these invocations are labelled as partitioned simulation totals. They are neither a monolithic scheduler nor optimized end-to-end latency. Sparrow-V owns processor RTL, simulator, instructions, testbenches, and execution counters; SparrowML does not modify that checkout.
+
+## Earlier validation layers
+
+The repository retains a deterministic synthetic fixture, dense INT8 reference path, and single-layer 2:4 sparsity/export/runtime experiments. These establish controlled contracts for the final WISDM flow. Their fixture accuracy, arithmetic-reduction, and cycle observations are not substituted for subject-held-out WISDM quality or sparse multi-layer performance.

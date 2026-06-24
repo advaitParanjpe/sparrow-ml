@@ -3,7 +3,12 @@ PYTHON ?= python3
 .PHONY: help install test lint format-check check docs-check smoke doctor validate-contracts milestone clean generate-fixture train-fp32 evaluate-fp32 run-fp32-baseline test-phase1 calibrate-int8 quantize-int8 evaluate-int8 run-int8-baseline test-phase2 prune-2of4 finetune-sparse pack-sparse evaluate-sparse run-sparse-baseline test-phase3 lower-ir validate-ir export-sparrowv-dense export-sparrowv-sparse validate-export run-export-baseline test-phase4 sparrowv-doctor prepare-sparrowv-dense prepare-sparrowv-sparse run-sparrowv-dense run-sparrowv-sparse run-sparrowv-baseline test-phase5 test-phase5-integration train-mlp quantize-mlp evaluate-mlp-int8 export-mlp validate-mlp-export run-multilayer-baseline test-phase6 prepare-sparrowv-mlp run-sparrowv-mlp validate-sparrowv-mlp run-sparrowv-mlp-baseline test-phase7 test-phase7-integration wisdm-doctor prepare-wisdm audit-wisdm run-wisdm-phase8a test-phase8a run-wisdm-phase8b test-phase8b select-wisdm-rtl-samples run-wisdm-phase8c test-phase8c test-phase8c-integration run-wisdm-final
 
 help:
-	@echo "Targets: install test lint format-check check docs-check smoke doctor validate-contracts Phase 1-7 targets sparrowv-doctor prepare-sparrowv-{dense,sparse,mlp} run-sparrowv-{dense,sparse,baseline,mlp,mlp-baseline} test-phase5 test-phase5-integration test-phase7 test-phase7-integration milestone clean"
+	@echo "General checks: install test lint format-check check docs-check smoke doctor validate-contracts"
+	@echo "Synthetic baselines: run-fp32-baseline run-int8-baseline run-sparse-baseline test-phase1 test-phase2 test-phase3"
+	@echo "Compiler/export: lower-ir validate-ir export-sparrowv-{dense,sparse} validate-export run-export-baseline test-phase4"
+	@echo "Sparrow-V integration: sparrowv-doctor prepare-sparrowv-{dense,sparse,mlp} run-sparrowv-{dense,sparse,baseline,mlp,mlp-baseline} test-phase5 test-phase7"
+	@echo "WISDM real-data: wisdm-doctor prepare-wisdm audit-wisdm run-wisdm-phase8{a,b,c} run-wisdm-final test-phase8{a,b,c}"
+	@echo "Final verification: check docs-check milestone clean"
 
 train-mlp quantize-mlp evaluate-mlp-int8 export-mlp run-multilayer-baseline:
 	$(PYTHON) -m sparrowml.cli $@
